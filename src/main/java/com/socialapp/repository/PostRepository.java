@@ -8,12 +8,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
-
 @Repository
 public interface PostRepository extends JpaRepository<Post, Long> {
 
-    // Feed: lấy bài của những người đang follow + của chính mình
+    /** Feed: bài của những người đang follow + của chính mình */
     @Query("""
             SELECT p FROM Post p
             WHERE p.user.id IN (
@@ -24,6 +22,6 @@ public interface PostRepository extends JpaRepository<Post, Long> {
             """)
     Page<Post> findFeedByUserId(@Param("userId") Long userId, Pageable pageable);
 
-    // Lấy tất cả bài của một user
+    /** Lấy tất cả bài của một user, mới nhất trước */
     Page<Post> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 }

@@ -20,21 +20,23 @@ public class Message {
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "sender_id", nullable = false)
+    @JoinColumn(name = "sender_id", nullable = false,
+                foreignKey = @ForeignKey(name = "fk_messages_sender"))
     private User sender;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "receiver_id", nullable = false)
+    @JoinColumn(name = "receiver_id", nullable = false,
+                foreignKey = @ForeignKey(name = "fk_messages_receiver"))
     private User receiver;
 
     @Column(nullable = false, length = 2000)
     private String content;
 
-    @Column(name = "is_read")
+    @Column(name = "is_read", nullable = false)
     @Builder.Default
     private Boolean isRead = false;
 
     @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 }

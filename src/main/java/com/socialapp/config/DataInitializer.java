@@ -18,30 +18,37 @@ public class DataInitializer implements CommandLineRunner {
     private final PasswordEncoder passwordEncoder;
 
     @Value("${groq.bot.username}")
-    private String groqBotUsername;
+    private String botUsername;
 
     @Value("${groq.bot.display-name}")
-    private String groqBotDisplayName;
+    private String botDisplayName;
 
     @Override
     public void run(String... args) {
-        // Tạo tài khoản bot Groq AI nếu chưa tồn tại
-        if (!userRepository.existsByUsername(groqBotUsername)) {
-            User groqBot = User.builder()
-                    .username(groqBotUsername)
-                    .email("groq@ai.bot")
-                    .passwordHash(passwordEncoder.encode("groq_bot_secure_pwd_!@#"))
-                    .displayName(groqBotDisplayName)
-                    .avatarUrl("https://ui-avatars.com/api/?name=Groq+AI&background=7c3aed&color=fff")
-                    .bio("Tôi là Groq AI, hãy @groq để hỏi tôi bất cứ điều gì!")
-                    .isBot(true)
-                    .isActive(true)
-                    .build();
+        createGroqBotIfNotExists();
+    }
 
-            userRepository.save(groqBot);
-            log.info("✅ Groq AI bot account created: @{}", groqBotUsername);
-        } else {
-            log.info("✅ Groq AI bot already exists: @{}", groqBotUsername);
+    private void createGroqBotIfNotExists() {
+        if (userRepository.existsByUsername(botUsername)) {
+            log.info("✅ Bot @{} đã tồn tại, bỏ qua khởi tạo", botUsername);
+            return;
         }
+
+        User groqBot = User.builder()
+                .username(botUsername)
+                .email(botUsername + "@ai.bot")
+                .passwordHash(passwordEncoder.encode(
+                        "groq_bot_!@#$_not_for_login_" + System.currentTimeMillis()))
+                .displayName(botDisplayName)
+                .avatarUrl("https://ui-avatars.com/api/?name=Groq+AI"
+                         + "&background=7c3aed&color=fff&bold=true")
+                .bio("Xin chào! Tôi là Groq AI 🤖 "
+                   + "Hãy @groq trong comment để hỏi tôi bất cứ điều gì!")
+                .isBot(true)
+                .isActive(true)
+                .build();
+
+        userRepository.save(groqBot);
+        log.info("✅ Đã tạo bot @{} thành công!", botUsername);
     }
 }

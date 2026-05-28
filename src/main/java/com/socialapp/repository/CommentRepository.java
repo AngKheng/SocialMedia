@@ -9,9 +9,17 @@ import java.util.List;
 @Repository
 public interface CommentRepository extends JpaRepository<Comment, Long> {
 
-    // Lấy comment gốc (không phải reply) của một post
+    /**
+     * Lấy các comment gốc của một post (không phải reply).
+     * parentComment = null → là comment gốc.
+     */
     List<Comment> findByPostIdAndParentCommentIsNullOrderByCreatedAtAsc(Long postId);
 
-    // Đếm số comment của một post
+    /**
+     * Lấy các reply của một comment cha.
+     */
+    List<Comment> findByParentCommentIdOrderByCreatedAtAsc(Long parentCommentId);
+
+    /** Đếm tổng số comment (gốc + reply) của một post */
     long countByPostId(Long postId);
 }

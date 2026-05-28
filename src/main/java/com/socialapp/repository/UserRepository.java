@@ -17,6 +17,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     boolean existsByEmail(String email);
 
-    // Tìm bot Groq AI
+    /** Dùng để tìm bot Groq khi khởi động app */
     Optional<User> findByUsernameAndIsBot(String username, Boolean isBot);
 }

@@ -34,19 +34,30 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
+            // Tắt CSRF (dùng JWT nên không cần)
             .csrf(AbstractHttpConfigurer::disable)
+
+            // Cấu hình CORS
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+
+            // Stateless session (JWT)
             .sessionManagement(session ->
                 session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+
+            // Phân quyền endpoint
             .authorizeHttpRequests(auth -> auth
-                // Public endpoints
+                // Auth endpoints: công khai
                 .requestMatchers("/api/auth/**").permitAll()
-                // WebSocket endpoint
+                // WebSocket endpoint: công khai (JWT check ở tầng WS)
                 .requestMatchers("/ws/**").permitAll()
-                // Tất cả còn lại cần đăng nhập
+                // Tất cả còn lại: phải đăng nhập
                 .anyRequest().authenticated()
             )
+
+            // Gắn AuthenticationProvider
             .authenticationProvider(authenticationProvider())
+
+            // Thêm JWT filter trước UsernamePasswordAuthenticationFilter
             .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
@@ -55,7 +66,9 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(List.of("http://localhost:5173")); // React dev server
+
+        // Cho phép React dev server (Vite mặc định port 5173)
+        config.setAllowedOrigins(List.of("http://localhost:5173"));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         config.setAllowedHeaders(List.of("*"));
         config.setAllowCredentials(true);
@@ -74,8 +87,8 @@ public class SecurityConfig {
     }
 
     @Bean
-    public AuthenticationManager authenticationManager(AuthenticationConfiguration config)
-            throws Exception {
+    public AuthenticationManager authenticationManager(
+            AuthenticationConfiguration config) throws Exception {
         return config.getAuthenticationManager();
     }
 

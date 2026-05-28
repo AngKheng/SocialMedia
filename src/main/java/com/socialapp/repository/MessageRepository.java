@@ -11,7 +11,10 @@ import java.util.List;
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Long> {
 
-    // Lấy toàn bộ lịch sử chat giữa 2 người, sắp xếp theo thời gian
+    /**
+     * Lấy toàn bộ lịch sử chat giữa 2 người,
+     * sắp xếp theo thời gian tăng dần.
+     */
     @Query("""
             SELECT m FROM Message m
             WHERE (m.sender.id = :userId1 AND m.receiver.id = :userId2)
@@ -21,6 +24,6 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
     List<Message> findConversation(@Param("userId1") Long userId1,
                                    @Param("userId2") Long userId2);
 
-    // Đếm tin nhắn chưa đọc
-    long countBySenderIdAndReceiverIdAndIsRead(Long senderId, Long receiverId, Boolean isRead);
+    /** Đếm tin nhắn chưa đọc mà userId nhận được */
+    long countByReceiverIdAndIsRead(Long receiverId, Boolean isRead);
 }

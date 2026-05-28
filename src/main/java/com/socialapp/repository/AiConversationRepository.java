@@ -9,9 +9,12 @@ import java.util.List;
 @Repository
 public interface AiConversationRepository extends JpaRepository<AiConversation, Long> {
 
-    // Lấy toàn bộ lịch sử chat của một user trong một post (để build context cho Groq)
+    /**
+     * Lấy toàn bộ lịch sử hội thoại của một user trong một post,
+     * sắp xếp theo thời gian để build context cho Groq API.
+     */
     List<AiConversation> findByPostIdAndUserIdOrderByCreatedAtAsc(Long postId, Long userId);
 
-    // Xóa context cũ nếu quá dài (optional)
+    /** Đếm số lượt hội thoại — dùng để giới hạn context nếu quá dài */
     long countByPostIdAndUserId(Long postId, Long userId);
 }

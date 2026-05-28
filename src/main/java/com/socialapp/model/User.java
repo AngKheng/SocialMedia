@@ -6,14 +6,15 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 
 @Entity
-@Table(name = "users", uniqueConstraints = {
-        @UniqueConstraint(columnNames = "username"),
-        @UniqueConstraint(columnNames = "email")
-})
+@Table(
+    name = "users",
+    uniqueConstraints = {
+        @UniqueConstraint(name = "uk_users_username", columnNames = "username"),
+        @UniqueConstraint(name = "uk_users_email",    columnNames = "email")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -37,37 +38,29 @@ public class User {
     @Column(name = "display_name", length = 100)
     private String displayName;
 
-    @Column(name = "avatar_url")
+    @Column(name = "avatar_url", length = 500)
     private String avatarUrl;
 
     @Column(length = 255)
     private String bio;
 
-    // Đánh dấu tài khoản bot Groq AI
-    @Column(name = "is_bot")
+    /**
+     * true  ? t�i kho?n bot (Groq AI)
+     * false ? ng??i d�ng th??ng
+     */
+    @Column(name = "is_bot", nullable = false)
     @Builder.Default
     private Boolean isBot = false;
 
-    @Column(name = "is_active")
+    @Column(name = "is_active", nullable = false)
     @Builder.Default
     private Boolean isActive = true;
 
     @CreationTimestamp
-    @Column(name = "created_at", updatable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
-    // ===== Relationships =====
-
-    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Set<Post> posts = new HashSet<>();
-
-    @OneToMany(mappedBy = "follower", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Set<Follow> following = new HashSet<>();
-
-    @OneToMany(mappedBy = "following", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
-    private Set<Follow> followers = new HashSet<>();
 }
