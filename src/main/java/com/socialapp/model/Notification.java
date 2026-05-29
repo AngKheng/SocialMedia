@@ -7,7 +7,13 @@ import org.hibernate.annotations.CreationTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "notifications")
+@Table(
+    name = "notifications",
+    indexes = {
+        @Index(name = "idx_notif_user_read", columnList = "user_id, is_read"),
+        @Index(name = "idx_notif_user_created", columnList = "user_id, created_at DESC")
+    }
+)
 @Getter
 @Setter
 @NoArgsConstructor
@@ -15,14 +21,13 @@ import java.time.LocalDateTime;
 @Builder
 public class Notification {
 
-    // ── Enum khai báo ngay trong Entity để không cần file riêng ──
     public enum Type {
-        LIKE,        // Ai đó like bài của bạn
-        COMMENT,     // Ai đó comment bài của bạn
-        FOLLOW,      // Ai đó follow bạn
-        MENTION,     // Ai đó @mention bạn trong comment
-        GROQ_REPLY,  // Groq AI đã trả lời @groq của bạn
-        NEW_MESSAGE  // Bạn có tin nhắn mới
+        LIKE,        // Like bài / comment
+        COMMENT,     // Comment vào bài
+        FOLLOW,      // Follow mình
+        MENTION,     // @mention trong comment
+        GROQ_REPLY,  // Groq AI đã trả lời
+        NEW_MESSAGE  // Tin nhắn mới
     }
 
     @Id
@@ -35,31 +40,27 @@ public class Notification {
                 foreignKey = @ForeignKey(name = "fk_notifications_user"))
     private User user;
 
-    /**
-     * Người thực hiện hành động.
-     * Có thể null nếu là thông báo hệ thống.
-     */
+    /** Người thực hiện hành động */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "actor_id",
                 foreignKey = @ForeignKey(name = "fk_notifications_actor"))
     private User actor;
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @Column(nullable = false, length = 50)
     private Type type;
 
-    /**
-     * ID của object liên quan:
-     *   LIKE / COMMENT / MENTION / GROQ_REPLY → postId
-     *   FOLLOW                                → followerId
-     *   NEW_MESSAGE                           → messageId
-     */
-    @Column(name = "reference_id")
-    private Long referenceId;
+    /** Post liên quan (nếu có) */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "post_id",
+                foreignKey = @ForeignKey(name = "fk_notifications_post"))
+    private Post post;
 
-    /** Nội dung thông báo hiển thị cho người dùng */
-    @Column(length = 500)
-    private String message;
+    /** Comment liên quan (nếu có) */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "comment_id",
+                foreignKey = @ForeignKey(name = "fk_notifications_comment"))
+    private Comment comment;
 
     @Column(name = "is_read", nullable = false)
     @Builder.Default

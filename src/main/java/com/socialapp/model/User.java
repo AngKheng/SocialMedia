@@ -45,8 +45,8 @@ public class User {
     private String bio;
 
     /**
-     * true  ? tài kho?n bot (Groq AI)
-     * false ? ng??i dùng th??ng
+     * true  : Groq AI
+     * false : user
      */
     @Column(name = "is_bot", nullable = false)
     @Builder.Default
