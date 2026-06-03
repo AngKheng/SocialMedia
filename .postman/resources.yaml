@@ -1,7 +1,10 @@
-# Use this workspace to collaborate
 workspace:
   id: 8d924315-9cbb-42eb-80d7-bb08ae779740
-
 localResources:
   docs:
     - ..\HELP.md
+  collections:
+    - ../postman/collections/New Collection
+cloudResources:
+  collections:
+    ../postman/collections/New Collection: 55415534-b390ede9-ed35-47f6-b12f-563e32b268a5
