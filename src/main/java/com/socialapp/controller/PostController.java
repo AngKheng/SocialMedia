@@ -1,6 +1,7 @@
 package com.socialapp.controller;
 
 import com.socialapp.dto.request.CreatePostRequest;
+import com.socialapp.dto.response.PageResponse;
 import com.socialapp.dto.response.PostResponse;
 import com.socialapp.service.PostService;
 import jakarta.validation.Valid;
@@ -21,8 +22,6 @@ public class PostController {
     /**
      * POST /api/posts
      * Tạo bài viết mới.
-     * Body: { content, mediaUrls: ["url1", "url2"] }
-     * mediaUrls là URL đã upload qua POST /api/upload trước đó.
      */
     @PostMapping
     public ResponseEntity<PostResponse> createPost(
@@ -36,7 +35,7 @@ public class PostController {
 
     /**
      * DELETE /api/posts/{id}
-     * Xóa bài viết — chỉ chủ bài mới được xóa.
+     * Xóa bài — chỉ chủ bài mới được xóa.
      */
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> deletePost(
@@ -45,5 +44,41 @@ public class PostController {
 
         postService.deletePost(id, currentUser);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * GET /api/posts/feed?page=0&size=10
+     * Feed của người đang đăng nhập:
+     * bài của mình + bài của người mình follow, mới nhất trước.
+     */
+    @GetMapping("/feed")
+    public ResponseEntity<PageResponse<PostResponse>> getFeed(
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "10") int size,
+            @AuthenticationPrincipal UserDetails currentUser) {
+
+        return ResponseEntity.ok(postService.getFeed(page, size, currentUser));
+    }
+
+    /**
+     * GET /api/posts/{id}
+     * Xem chi tiết 1 bài viết.
+     */
+    @GetMapping("/{id}")
+    public ResponseEntity<PostResponse> getPost(@PathVariable Long id) {
+        return ResponseEntity.ok(postService.getPost(id));
+    }
+
+    /**
+     * GET /api/posts/user/{id}?page=0&size=10
+     * Tất cả bài của một user, mới nhất trước.
+     */
+    @GetMapping("/user/{id}")
+    public ResponseEntity<PageResponse<PostResponse>> getPostsByUser(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0")  int page,
+            @RequestParam(defaultValue = "10") int size) {
+
+        return ResponseEntity.ok(postService.getPostsByUser(id, page, size));
     }
 }
