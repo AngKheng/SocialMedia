@@ -67,6 +67,14 @@ jwt:
   refresh-token-expiration: 604800000  # 7 ngày (ms)
 
 # =============================================
+# Cloudinary - API key load từ .env
+# =============================================
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME}
+  api-key: ${CLOUDINARY_API_KEY}
+  api-secret: ${CLOUDINARY_API_SECRET}
+
+# =============================================
 # Groq AI — API key load từ .env
 # =============================================
 groq:

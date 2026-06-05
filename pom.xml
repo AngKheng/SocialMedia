@@ -120,7 +120,14 @@
             <version>6.2.4</version>
             <scope>test</scope>
         </dependency>
-
+        
+        <!-- ===== Cloudianry ===== -->
+        <dependency>
+            <groupId>com.cloudinary</groupId>
+            <artifactId>cloudinary-http45</artifactId>
+            <version>1.36.0</version>
+        </dependency>
+        
     </dependencies>
 
     <build>
