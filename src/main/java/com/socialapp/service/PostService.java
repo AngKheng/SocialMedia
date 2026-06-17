@@ -6,6 +6,7 @@ import com.socialapp.dto.response.PostResponse;
 import com.socialapp.exception.ResourceNotFoundException;
 import com.socialapp.model.Post;
 import com.socialapp.model.User;
+import com.socialapp.repository.LikeRepository;
 import com.socialapp.repository.PostRepository;
 import com.socialapp.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
@@ -25,13 +26,13 @@ public class PostService {
 
     private final PostRepository postRepository;
     private final UserRepository userRepository;
+    private final LikeRepository likeRepository;   // ← thêm mới
 
-    // Giới hạn như Twitter/X
     private static final int MAX_IMAGES = 4;
     private static final int MAX_VIDEOS = 1;
 
     // =============================================
-    // POST /api/posts  (4A)
+    // POST /api/posts
     // =============================================
 
     @Transactional
@@ -55,11 +56,13 @@ public class PostService {
 
         Post saved = postRepository.save(post);
         log.info("@{} đã tạo post id={}", me.getUsername(), saved.getId());
-        return PostResponse.from(saved);
+
+        // Vừa tạo thì chưa thể tự like
+        return PostResponse.from(saved, false);
     }
 
     // =============================================
-    // DELETE /api/posts/{id}  (4A)
+    // DELETE /api/posts/{id}
     // =============================================
 
     @Transactional
@@ -76,7 +79,7 @@ public class PostService {
     }
 
     // =============================================
-    // GET /api/posts/feed  (4B)
+    // GET /api/posts/feed  (đính kèm isLiked theo currentUser)
     // =============================================
 
     @Transactional(readOnly = true)
@@ -86,37 +89,49 @@ public class PostService {
 
         return PageResponse.from(
                 postRepository.findFeedByUserId(me.getId(), pageable)
-                              .map(PostResponse::from)
+                              .map(post -> toResponseWithLikeStatus(post, me.getId()))
         );
     }
 
     // =============================================
-    // GET /api/posts/{id}  (4B)
+    // GET /api/posts/{id}  (đính kèm isLiked theo currentUser)
     // =============================================
 
     @Transactional(readOnly = true)
-    public PostResponse getPost(Long postId) {
+    public PostResponse getPost(Long postId, UserDetails currentUser) {
         Post post = postRepository.findById(postId)
                 .orElseThrow(() -> new ResourceNotFoundException("Post", postId));
-        return PostResponse.from(post);
+
+        User me = getUser(currentUser.getUsername());
+        return toResponseWithLikeStatus(post, me.getId());
     }
 
     // =============================================
-    // GET /api/posts/user/{id}  (4B)
+    // GET /api/posts/user/{id}  (đính kèm isLiked theo currentUser)
     // =============================================
 
     @Transactional(readOnly = true)
-    public PageResponse<PostResponse> getPostsByUser(Long userId, int page, int size) {
-        // 404 nếu user không tồn tại
+    public PageResponse<PostResponse> getPostsByUser(Long userId, int page, int size,
+                                                      UserDetails currentUser) {
         userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User", userId));
 
+        User me = getUser(currentUser.getUsername());
         Pageable pageable = PageRequest.of(page, size);
 
         return PageResponse.from(
                 postRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
-                              .map(PostResponse::from)
+                              .map(post -> toResponseWithLikeStatus(post, me.getId()))
         );
+    }
+
+    // =============================================
+    // Helper: build PostResponse + kiểm tra isLiked
+    // =============================================
+
+    private PostResponse toResponseWithLikeStatus(Post post, Long currentUserId) {
+        boolean isLiked = likeRepository.existsByUserIdAndPostId(currentUserId, post.getId());
+        return PostResponse.from(post, isLiked);
     }
 
     // =============================================

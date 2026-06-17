@@ -48,8 +48,7 @@ public class PostController {
 
     /**
      * GET /api/posts/feed?page=0&size=10
-     * Feed của người đang đăng nhập:
-     * bài của mình + bài của người mình follow, mới nhất trước.
+     * Feed của người đang đăng nhập, kèm isLiked theo currentUser.
      */
     @GetMapping("/feed")
     public ResponseEntity<PageResponse<PostResponse>> getFeed(
@@ -62,23 +61,27 @@ public class PostController {
 
     /**
      * GET /api/posts/{id}
-     * Xem chi tiết 1 bài viết.
+     * Xem chi tiết 1 bài viết, kèm isLiked theo currentUser.
      */
     @GetMapping("/{id}")
-    public ResponseEntity<PostResponse> getPost(@PathVariable Long id) {
-        return ResponseEntity.ok(postService.getPost(id));
+    public ResponseEntity<PostResponse> getPost(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails currentUser) {
+
+        return ResponseEntity.ok(postService.getPost(id, currentUser));
     }
 
     /**
      * GET /api/posts/user/{id}?page=0&size=10
-     * Tất cả bài của một user, mới nhất trước.
+     * Tất cả bài của một user, kèm isLiked theo currentUser.
      */
     @GetMapping("/user/{id}")
     public ResponseEntity<PageResponse<PostResponse>> getPostsByUser(
             @PathVariable Long id,
             @RequestParam(defaultValue = "0")  int page,
-            @RequestParam(defaultValue = "10") int size) {
+            @RequestParam(defaultValue = "10") int size,
+            @AuthenticationPrincipal UserDetails currentUser) {
 
-        return ResponseEntity.ok(postService.getPostsByUser(id, page, size));
+        return ResponseEntity.ok(postService.getPostsByUser(id, page, size, currentUser));
     }
 }

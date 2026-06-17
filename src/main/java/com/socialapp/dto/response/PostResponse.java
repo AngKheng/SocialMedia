@@ -11,16 +11,27 @@ public record PostResponse(
         Long id,
         UserResponse user,
         String content,
-        List<String> mediaUrls,   // tách từ imageUrls (comma-separated) thành List
+        List<String> mediaUrls,
         boolean isRepost,
         Long originalPostId,
         int likeCount,
         int commentCount,
         int repostCount,
+        boolean isLiked,    // ← thêm mới: người đang xem có like bài này chưa
         LocalDateTime createdAt
 ) {
+    /**
+     * Dùng khi không cần biết trạng thái like (ví dụ: bối cảnh không có currentUser).
+     * isLiked mặc định = false.
+     */
     public static PostResponse from(Post post) {
-        // Tách chuỗi "url1,url2" thành List
+        return from(post, false);
+    }
+
+    /**
+     * Dùng khi đã biết currentUser có like bài này hay chưa.
+     */
+    public static PostResponse from(Post post, boolean isLiked) {
         List<String> urls = (post.getImageUrls() != null && !post.getImageUrls().isBlank())
                 ? Arrays.asList(post.getImageUrls().split(","))
                 : Collections.emptyList();
@@ -35,6 +46,7 @@ public record PostResponse(
                 post.getLikeCount(),
                 post.getCommentCount(),
                 post.getRepostCount(),
+                isLiked,
                 post.getCreatedAt()
         );
     }
