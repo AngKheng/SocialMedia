@@ -13,6 +13,7 @@ import com.socialapp.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,10 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final UserRepository         userRepository;
+    private final SimpMessagingTemplate  messagingTemplate;   // ← thêm mới
+
+    /** Prefix phải khớp với setUserDestinationPrefix("/user") trong WebSocketConfig */
+    private static final String NOTIFICATION_DESTINATION = "/queue/notifications";
 
     // =============================================
     // GET /api/notifications?page=0&size=20
@@ -66,16 +71,13 @@ public class NotificationService {
     // Tạo thông báo — gọi từ các service khác (async)
     // =============================================
 
-    /** Khi có người like bài */
     @Async
     @Transactional
     public void notifyLikePost(User actor, Post post) {
-        // Không tự thông báo cho chính mình
         if (actor.getId().equals(post.getUser().getId())) return;
         save(post.getUser(), actor, Type.LIKE, post, null);
     }
 
-    /** Khi có người comment vào bài */
     @Async
     @Transactional
     public void notifyComment(User actor, Post post, Comment comment) {
@@ -83,7 +85,6 @@ public class NotificationService {
         save(post.getUser(), actor, Type.COMMENT, post, comment);
     }
 
-    /** Khi có người follow */
     @Async
     @Transactional
     public void notifyFollow(User actor, User target) {
@@ -91,7 +92,6 @@ public class NotificationService {
         save(target, actor, Type.FOLLOW, null, null);
     }
 
-    /** Khi Groq AI reply */
     @Async
     @Transactional
     public void notifyGroqReply(User recipient, Post post, Comment aiComment) {
@@ -106,15 +106,38 @@ public class NotificationService {
 
     private void save(User recipient, User actor, Type type, Post post, Comment comment) {
         try {
-            notificationRepository.save(Notification.builder()
+            Notification saved = notificationRepository.save(Notification.builder()
                     .user(recipient)
                     .actor(actor)
                     .type(type)
                     .post(post)
                     .comment(comment)
                     .build());
+
+            pushRealtime(recipient, saved);
+
         } catch (Exception e) {
             log.error("Lưu notification thất bại: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * Push notification qua WebSocket tới đúng user đang online.
+     * Dùng convertAndSendToUser → khớp userDestinationPrefix("/user") đã cấu hình.
+     * Nếu user không online, message bị bỏ qua — REST API vẫn là nguồn chính.
+     */
+    private void pushRealtime(User recipient, Notification notification) {
+        try {
+            NotificationResponse payload = NotificationResponse.from(notification);
+            messagingTemplate.convertAndSendToUser(
+                    recipient.getUsername(),
+                    NOTIFICATION_DESTINATION,
+                    payload
+            );
+            log.debug("Đã push WS notification tới @{}", recipient.getUsername());
+        } catch (Exception e) {
+            // Không throw — push thất bại không nên ảnh hưởng tới luồng chính
+            log.warn("Push WS notification thất bại: {}", e.getMessage());
         }
     }
 
