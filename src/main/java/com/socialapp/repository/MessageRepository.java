@@ -2,9 +2,11 @@ package com.socialapp.repository;
 
 import com.socialapp.model.Message;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
@@ -26,4 +28,19 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     /** Đếm tin nhắn chưa đọc mà userId nhận được */
     long countByReceiverIdAndIsRead(Long receiverId, Boolean isRead);
+
+    /**
+     * Đánh dấu đã đọc toàn bộ tin nhắn gửi TỪ otherUserId ĐẾN userId.
+     * Gọi khi userId mở khung chat với otherUserId.
+     */
+    @Modifying
+    @Transactional
+    @Query("""
+            UPDATE Message m SET m.isRead = true
+            WHERE m.receiver.id = :userId
+              AND m.sender.id = :otherUserId
+              AND m.isRead = false
+            """)
+    void markConversationAsRead(@Param("userId") Long userId,
+                                @Param("otherUserId") Long otherUserId);
 }
