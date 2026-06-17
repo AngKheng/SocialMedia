@@ -9,6 +9,7 @@ import com.socialapp.repository.MessageRepository;
 import com.socialapp.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,11 +21,14 @@ import java.util.List;
 @Slf4j
 public class MessageService {
 
-    private final MessageRepository messageRepository;
-    private final UserRepository    userRepository;
+    private final MessageRepository     messageRepository;
+    private final UserRepository        userRepository;
+    private final SimpMessagingTemplate messagingTemplate;   // ← thêm mới
+
+    private static final String CHAT_DESTINATION = "/queue/messages";
 
     // =============================================
-    // POST /api/messages
+    // POST /api/messages  (dùng chung cho REST lẫn WebSocket)
     // =============================================
 
     @Transactional
@@ -46,7 +50,12 @@ public class MessageService {
         Message saved = messageRepository.save(message);
         log.info("@{} gửi tin nhắn tới @{}", sender.getUsername(), receiver.getUsername());
 
-        return MessageResponse.from(saved);
+        MessageResponse response = MessageResponse.from(saved);
+
+        // Push real-time tới người nhận (nếu đang online)
+        pushRealtime(receiver, response);
+
+        return response;
     }
 
     // =============================================
@@ -56,17 +65,36 @@ public class MessageService {
     @Transactional
     public List<MessageResponse> getConversation(Long otherUserId, UserDetails currentUser) {
         User me = getUser(currentUser.getUsername());
-        getUserById(otherUserId); // 404 nếu không tồn tại
+        getUserById(otherUserId);
 
-        List<Message> messages = messageRepository
-                .findConversation(me.getId(), otherUserId);
-
-        // Đánh dấu đã đọc các tin gửi từ otherUserId tới mình
+        List<Message> messages = messageRepository.findConversation(me.getId(), otherUserId);
         messageRepository.markConversationAsRead(me.getId(), otherUserId);
 
         return messages.stream()
                 .map(MessageResponse::from)
                 .toList();
+    }
+
+    // =============================================
+    // Push real-time
+    // =============================================
+
+    /**
+     * Gửi tin nhắn qua WebSocket tới đúng người nhận đang online.
+     * Nếu không online, message bị bỏ qua — REST API vẫn là nguồn chính,
+     * người nhận sẽ thấy tin nhắn khi load lại lịch sử chat.
+     */
+    private void pushRealtime(User receiver, MessageResponse message) {
+        try {
+            messagingTemplate.convertAndSendToUser(
+                    receiver.getUsername(),
+                    CHAT_DESTINATION,
+                    message
+            );
+            log.debug("Đã push WS message tới @{}", receiver.getUsername());
+        } catch (Exception e) {
+            log.warn("Push WS message thất bại: {}", e.getMessage());
+        }
     }
 
     // =============================================
