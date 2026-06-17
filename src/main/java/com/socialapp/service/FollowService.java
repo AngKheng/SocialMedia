@@ -21,8 +21,9 @@ import java.util.List;
 @Slf4j
 public class FollowService {
 
-    private final FollowRepository followRepository;
-    private final UserRepository   userRepository;
+    private final FollowRepository    followRepository;
+    private final UserRepository      userRepository;
+    private final NotificationService notificationService;   // ← thêm mới
 
     // =============================================
     // POST /api/follow/{id}
@@ -44,6 +45,9 @@ public class FollowService {
                 .follower(me)
                 .following(target)
                 .build());
+
+        // Gửi thông báo (async)
+        notificationService.notifyFollow(me, target);
 
         log.info("@{} đã follow @{}", me.getUsername(), target.getUsername());
 
@@ -78,8 +82,7 @@ public class FollowService {
 
     @Transactional(readOnly = true)
     public List<UserResponse> getFollowers(Long userId) {
-        getUserById(userId); // 404 nếu không tồn tại
-
+        getUserById(userId);
         return followRepository.findByFollowingId(userId).stream()
                 .map(f -> UserResponse.from(f.getFollower()))
                 .toList();
@@ -91,8 +94,7 @@ public class FollowService {
 
     @Transactional(readOnly = true)
     public List<UserResponse> getFollowing(Long userId) {
-        getUserById(userId); // 404 nếu không tồn tại
-
+        getUserById(userId);
         return followRepository.findByFollowerId(userId).stream()
                 .map(f -> UserResponse.from(f.getFollowing()))
                 .toList();
@@ -104,7 +106,8 @@ public class FollowService {
 
     private User getUser(String username) {
         return userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại: " + username));
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "User không tồn tại: " + username));
     }
 
     private User getUserById(Long id) {

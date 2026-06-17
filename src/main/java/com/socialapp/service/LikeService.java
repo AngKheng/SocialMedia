@@ -21,10 +21,11 @@ import org.springframework.transaction.annotation.Transactional;
 @Slf4j
 public class LikeService {
 
-    private final LikeRepository    likeRepository;
-    private final PostRepository    postRepository;
-    private final CommentRepository commentRepository;
-    private final UserRepository    userRepository;
+    private final LikeRepository         likeRepository;
+    private final PostRepository         postRepository;
+    private final CommentRepository      commentRepository;
+    private final UserRepository         userRepository;
+    private final NotificationService    notificationService;   // ← thêm mới
 
     // =============================================
     // POST /api/posts/{id}/like
@@ -39,14 +40,13 @@ public class LikeService {
             throw new IllegalArgumentException("Bạn đã like bài này rồi");
         }
 
-        likeRepository.save(Like.builder()
-                .user(me)
-                .post(post)
-                .build());
+        likeRepository.save(Like.builder().user(me).post(post).build());
 
-        // Cập nhật likeCount trực tiếp trên post
         post.setLikeCount(post.getLikeCount() + 1);
         postRepository.save(post);
+
+        // Gửi thông báo (async)
+        notificationService.notifyLikePost(me, post);
 
         log.info("@{} liked post id={}", me.getUsername(), postId);
         return new LikeResponse(true, post.getLikeCount());
@@ -67,7 +67,6 @@ public class LikeService {
 
         likeRepository.deleteByUserIdAndPostId(me.getId(), postId);
 
-        // Giảm likeCount, không cho xuống âm
         post.setLikeCount(Math.max(0, post.getLikeCount() - 1));
         postRepository.save(post);
 
@@ -88,10 +87,7 @@ public class LikeService {
             throw new IllegalArgumentException("Bạn đã like comment này rồi");
         }
 
-        likeRepository.save(Like.builder()
-                .user(me)
-                .comment(comment)
-                .build());
+        likeRepository.save(Like.builder().user(me).comment(comment).build());
 
         comment.setLikeCount(comment.getLikeCount() + 1);
         commentRepository.save(comment);

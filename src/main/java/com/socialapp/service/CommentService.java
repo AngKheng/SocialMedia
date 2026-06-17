@@ -22,10 +22,11 @@ import java.util.List;
 @Slf4j
 public class CommentService {
 
-    private final CommentRepository  commentRepository;
-    private final PostRepository     postRepository;
-    private final UserRepository     userRepository;
-    private final AiMentionService   aiMentionService;   // ← thêm mới
+    private final CommentRepository   commentRepository;
+    private final PostRepository      postRepository;
+    private final UserRepository      userRepository;
+    private final AiMentionService    aiMentionService;
+    private final NotificationService notificationService;   // ← thêm mới
 
     // =============================================
     // POST /api/comments
@@ -59,13 +60,15 @@ public class CommentService {
 
         Comment saved = commentRepository.save(comment);
 
-        // Tăng commentCount
         post.setCommentCount(post.getCommentCount() + 1);
         postRepository.save(post);
 
         log.info("@{} commented on post id={}", me.getUsername(), post.getId());
 
-        // Kiểm tra và xử lý @groq mention (chạy async, không block)
+        // Thông báo cho chủ bài (async)
+        notificationService.notifyComment(me, post, saved);
+
+        // Kiểm tra @groq mention (async)
         aiMentionService.handleIfMentioned(saved);
 
         return CommentResponse.from(saved);
