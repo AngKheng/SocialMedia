@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from "react";
+import { disconnectWebSocket } from "../api/websocket";
 
 const AuthContext = createContext(null);
 
@@ -21,6 +22,11 @@ export function AuthProvider({ children }) {
     localStorage.removeItem("refreshToken");
     localStorage.removeItem("user");
     setUser(null);
+
+    // Đóng kết nối WebSocket đang dùng JWT cũ — tránh trường hợp
+    // người dùng login lại bằng tài khoản khác trên cùng tab mà
+    // kết nối cũ vẫn còn treo, gây lẫn dữ liệu real-time giữa 2 user.
+    disconnectWebSocket();
   }
 
   const value = {

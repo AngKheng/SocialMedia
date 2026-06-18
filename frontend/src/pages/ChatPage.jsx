@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import api from "../api/axios";
-import { connectWebSocket, disconnectWebSocket, sendChatMessage } from "../api/websocket";
+import { connectWebSocket, sendChatMessage } from "../api/websocket";
 import { useAuth } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
 
@@ -20,23 +20,23 @@ export default function ChatPage() {
     loadConversations();
   }, []);
 
-  // Kết nối WebSocket 1 lần, nhận tin nhắn real-time
+  // Đăng ký lắng nghe tin nhắn real-time.
+  // Dùng hàm cleanup do connectWebSocket trả về để gỡ đăng ký khi unmount —
+  // KHÔNG disconnect toàn bộ kết nối, vì Navbar/NotificationPage vẫn cần dùng chung.
   useEffect(() => {
-    connectWebSocket({
+    const unsubscribe = connectWebSocket({
       onChatMessage: (msg) => {
-        // Nếu tin nhắn thuộc cuộc hội thoại đang mở → thêm vào ngay
         setActiveUser((current) => {
           if (current && (msg.senderId === current.id || msg.receiverId === current.id)) {
             setMessages((prev) => [...prev, msg]);
           }
           return current;
         });
-        // Cập nhật lại danh sách hội thoại (để hiện tin mới nhất + unread)
         loadConversations();
       },
     });
 
-    return () => disconnectWebSocket();
+    return unsubscribe;
   }, []);
 
   // Tự cuộn xuống cuối khi có tin nhắn mới
@@ -60,7 +60,6 @@ export default function ChatPage() {
     try {
       const res = await api.get(`/messages/${otherUser.id}`);
       setMessages(res.data);
-      // Đánh dấu đã đọc xong → refresh lại sidebar để bỏ badge unread
       loadConversations();
     } catch (err) {
       console.error("Load conversation thất bại:", err);
@@ -74,7 +73,6 @@ export default function ChatPage() {
     const sent = sendChatMessage(activeUser.id, input);
 
     if (sent) {
-      // Optimistic UI: hiện tin nhắn ngay, không cần chờ server
       setMessages((prev) => [
         ...prev,
         {
@@ -86,7 +84,6 @@ export default function ChatPage() {
       ]);
       setInput("");
     } else {
-      // WebSocket chưa kết nối → fallback gửi qua REST
       api.post("/messages", { receiverId: activeUser.id, content: input })
         .then((res) => {
           setMessages((prev) => [...prev, res.data]);
