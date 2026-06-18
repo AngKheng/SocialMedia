@@ -31,7 +31,6 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     /**
      * Đánh dấu đã đọc toàn bộ tin nhắn gửi TỪ otherUserId ĐẾN userId.
-     * Gọi khi userId mở khung chat với otherUserId.
      */
     @Modifying
     @Transactional
@@ -43,4 +42,16 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
             """)
     void markConversationAsRead(@Param("userId") Long userId,
                                 @Param("otherUserId") Long otherUserId);
+
+    /**
+     * Lấy toàn bộ message mà userId tham gia (gửi hoặc nhận),
+     * mới nhất trước — dùng để build danh sách hội thoại (conversation list).
+     * Xử lý group-by ở service layer vì JPQL group-by phức tạp với entity.
+     */
+    @Query("""
+            SELECT m FROM Message m
+            WHERE m.sender.id = :userId OR m.receiver.id = :userId
+            ORDER BY m.createdAt DESC
+            """)
+    List<Message> findAllByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId);
 }

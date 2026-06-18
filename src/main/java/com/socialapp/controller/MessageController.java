@@ -1,6 +1,7 @@
 package com.socialapp.controller;
 
 import com.socialapp.dto.request.SendMessageRequest;
+import com.socialapp.dto.response.ConversationResponse;
 import com.socialapp.dto.response.MessageResponse;
 import com.socialapp.service.MessageService;
 import jakarta.validation.Valid;
@@ -21,9 +22,20 @@ public class MessageController {
     private final MessageService messageService;
 
     /**
+     * GET /api/messages
+     * Danh sách hội thoại — mỗi người đối thoại 1 dòng, mới nhất trước.
+     * Dùng để hiển thị sidebar danh sách chat.
+     */
+    @GetMapping
+    public ResponseEntity<List<ConversationResponse>> getConversations(
+            @AuthenticationPrincipal UserDetails currentUser) {
+
+        return ResponseEntity.ok(messageService.getConversations(currentUser));
+    }
+
+    /**
      * POST /api/messages
      * Gửi tin nhắn.
-     * Body: { receiverId, content }
      */
     @PostMapping
     public ResponseEntity<MessageResponse> sendMessage(
@@ -38,7 +50,6 @@ public class MessageController {
     /**
      * GET /api/messages/{userId}
      * Lấy toàn bộ lịch sử chat với userId.
-     * Tự động đánh dấu tin nhắn của họ gửi cho mình là đã đọc.
      */
     @GetMapping("/{userId}")
     public ResponseEntity<List<MessageResponse>> getConversation(
