@@ -6,6 +6,7 @@ import com.socialapp.dto.response.PostResponse;
 import com.socialapp.exception.ResourceNotFoundException;
 import com.socialapp.model.Post;
 import com.socialapp.model.User;
+import com.socialapp.repository.FollowRepository;
 import com.socialapp.repository.LikeRepository;
 import com.socialapp.repository.PostRepository;
 import com.socialapp.repository.UserRepository;
@@ -24,9 +25,10 @@ import java.util.List;
 @Slf4j
 public class PostService {
 
-    private final PostRepository postRepository;
-    private final UserRepository userRepository;
-    private final LikeRepository likeRepository;   // ← thêm mới
+    private final PostRepository  postRepository;
+    private final UserRepository  userRepository;
+    private final LikeRepository  likeRepository;
+    private final FollowRepository followRepository;   // ← thêm mới
 
     private static final int MAX_IMAGES = 4;
     private static final int MAX_VIDEOS = 1;
@@ -57,8 +59,8 @@ public class PostService {
         Post saved = postRepository.save(post);
         log.info("@{} đã tạo post id={}", me.getUsername(), saved.getId());
 
-        // Vừa tạo thì chưa thể tự like
-        return PostResponse.from(saved, false);
+        // Vừa tạo thì chưa thể tự like hay follow chính mình
+        return PostResponse.from(saved, false, false);
     }
 
     // =============================================
@@ -79,7 +81,7 @@ public class PostService {
     }
 
     // =============================================
-    // GET /api/posts/feed  (đính kèm isLiked theo currentUser)
+    // GET /api/posts/feed
     // =============================================
 
     @Transactional(readOnly = true)
@@ -89,12 +91,12 @@ public class PostService {
 
         return PageResponse.from(
                 postRepository.findFeedByUserId(me.getId(), pageable)
-                              .map(post -> toResponseWithLikeStatus(post, me.getId()))
+                              .map(post -> toResponse(post, me.getId()))
         );
     }
 
     // =============================================
-    // GET /api/posts/{id}  (đính kèm isLiked theo currentUser)
+    // GET /api/posts/{id}
     // =============================================
 
     @Transactional(readOnly = true)
@@ -103,11 +105,11 @@ public class PostService {
                 .orElseThrow(() -> new ResourceNotFoundException("Post", postId));
 
         User me = getUser(currentUser.getUsername());
-        return toResponseWithLikeStatus(post, me.getId());
+        return toResponse(post, me.getId());
     }
 
     // =============================================
-    // GET /api/posts/user/{id}  (đính kèm isLiked theo currentUser)
+    // GET /api/posts/user/{id}
     // =============================================
 
     @Transactional(readOnly = true)
@@ -121,17 +123,24 @@ public class PostService {
 
         return PageResponse.from(
                 postRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
-                              .map(post -> toResponseWithLikeStatus(post, me.getId()))
+                              .map(post -> toResponse(post, me.getId()))
         );
     }
 
     // =============================================
-    // Helper: build PostResponse + kiểm tra isLiked
+    // Helper: build PostResponse với isLiked + isFollowing
     // =============================================
 
-    private PostResponse toResponseWithLikeStatus(Post post, Long currentUserId) {
-        boolean isLiked = likeRepository.existsByUserIdAndPostId(currentUserId, post.getId());
-        return PostResponse.from(post, isLiked);
+    private PostResponse toResponse(Post post, Long currentUserId) {
+        boolean isLiked = likeRepository
+                .existsByUserIdAndPostId(currentUserId, post.getId());
+
+        // Không follow chính mình
+        boolean isFollowing = !post.getUser().getId().equals(currentUserId)
+                && followRepository.existsByFollowerIdAndFollowingId(
+                        currentUserId, post.getUser().getId());
+
+        return PostResponse.from(post, isLiked, isFollowing);
     }
 
     // =============================================

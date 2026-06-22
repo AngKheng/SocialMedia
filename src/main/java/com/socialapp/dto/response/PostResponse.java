@@ -9,44 +9,44 @@ import java.util.List;
 
 public record PostResponse(
         Long id,
-        UserResponse user,
+        PostUserResponse user,   // dùng PostUserResponse để có isFollowing
         String content,
         List<String> mediaUrls,
+        boolean isLiked,
         boolean isRepost,
         Long originalPostId,
         int likeCount,
         int commentCount,
         int repostCount,
-        boolean isLiked,    // ← thêm mới: người đang xem có like bài này chưa
         LocalDateTime createdAt
 ) {
-    /**
-     * Dùng khi không cần biết trạng thái like (ví dụ: bối cảnh không có currentUser).
-     * isLiked mặc định = false.
-     */
+    /** Dùng khi KHÔNG biết trạng thái like/follow (không có currentUser) */
     public static PostResponse from(Post post) {
-        return from(post, false);
+        return from(post, false, false);
     }
 
-    /**
-     * Dùng khi đã biết currentUser có like bài này hay chưa.
-     */
+    /** Dùng khi biết isLiked nhưng chưa biết isFollowing */
     public static PostResponse from(Post post, boolean isLiked) {
+        return from(post, isLiked, false);
+    }
+
+    /** Full — dùng ở Feed/PostDetail khi có currentUser để check cả like lẫn follow */
+    public static PostResponse from(Post post, boolean isLiked, boolean isFollowing) {
         List<String> urls = (post.getImageUrls() != null && !post.getImageUrls().isBlank())
                 ? Arrays.asList(post.getImageUrls().split(","))
                 : Collections.emptyList();
 
         return new PostResponse(
                 post.getId(),
-                UserResponse.from(post.getUser()),
+                PostUserResponse.from(post.getUser(), isFollowing),
                 post.getContent(),
                 urls,
+                isLiked,
                 post.getIsRepost(),
                 post.getOriginalPost() != null ? post.getOriginalPost().getId() : null,
                 post.getLikeCount(),
                 post.getCommentCount(),
                 post.getRepostCount(),
-                isLiked,
                 post.getCreatedAt()
         );
     }
