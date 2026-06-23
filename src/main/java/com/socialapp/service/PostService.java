@@ -131,6 +131,26 @@ public class PostService {
  }
 
  // =============================================
+ // GET /api/posts/discover (Phase 9I)
+ // =============================================
+
+ /**
+ * Discover feed: trả về N bài random từ user không follow + không phải chính mình.
+ * Không phân trang — mỗi lần gọi là 1 lần random mới.
+ */
+ @Transactional(readOnly = true)
+ public List<PostResponse> getDiscover(int limit, UserDetails currentUser) {
+ User me = getUser(currentUser.getUsername());
+
+ // Giới hạn tối đa 50 để tránh abuse
+ int safeLimit = Math.min(Math.max(limit, 1), 50);
+
+ return postRepository.findDiscoverByUserId(me.getId(), safeLimit).stream()
+ .map(post -> toResponse(post, me.getId()))
+ .toList();
+ }
+
+ // =============================================
  // GET /api/posts/{id}
  // =============================================
 

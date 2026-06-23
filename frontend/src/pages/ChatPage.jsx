@@ -3,6 +3,7 @@ import api from "../api/axios";
 import { connectWebSocket, sendChatMessage } from "../api/websocket";
 import { useAuth } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
+import PresenceIndicator from "../components/PresenceIndicator";
 
 export default function ChatPage() {
  const { user } = useAuth();
@@ -13,6 +14,9 @@ export default function ChatPage() {
  const [input, setInput] = useState("");
  const [loading, setLoading] = useState(true);
 
+ // Map userId → isOnline (Phase 9H). Khởi tạo từ server (conversation list có isOnline)
+ const [onlineMap, setOnlineMap] = useState({});
+
  const bottomRef = useRef(null);
 
  // Load danh sách hội thoại lúc vào trang
@@ -20,9 +24,7 @@ export default function ChatPage() {
  loadConversations();
  }, []);
 
- // Đăng ký lắng nghe tin nhắn real-time.
- // Dùng hàm cleanup do connectWebSocket trả về để gỡ đăng ký khi unmount —
- // KHÔNG disconnect toàn bộ kết nối, vì Navbar/NotificationPage vẫn cần dùng chung.
+ // Đăng ký lắng nghe tin nhắn + presence real-time
  useEffect(() => {
  const unsubscribe = connectWebSocket({
  onChatMessage: (msg) => {
@@ -33,6 +35,10 @@ export default function ChatPage() {
  return current;
  });
  loadConversations();
+ },
+ // Phase 9H: nhận presence update
+ onPresence: ({ userId, isOnline }) => {
+ setOnlineMap((prev) => ({ ...prev, [userId]: isOnline }));
  },
  });
 
@@ -48,6 +54,12 @@ export default function ChatPage() {
  try {
  const res = await api.get("/messages");
  setConversations(res.data);
+ // Khởi tạo onlineMap từ conversation list (server trả về isOnline)
+ const map = {};
+ res.data.forEach((c) => {
+ map[c.otherUser.id] = c.isOnline;
+ });
+ setOnlineMap((prev) => ({ ...map, ...prev }));
  } catch (err) {
  console.error("Load conversations thất bại:", err);
  } finally {
@@ -120,10 +132,18 @@ export default function ChatPage() {
  activeUser?.id === conv.otherUser.id ? "bg-blue-50" : ""
  }`}
  >
- <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-sm font-medium text-blue-700">
+ <div className="relative flex-shrink-0">
+ <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-medium text-blue-700">
  {(conv.otherUser.displayName || conv.otherUser.username)
  .slice(0, 2)
  .toUpperCase()}
+ </div>
+ {/* Chấm online (Phase 9H) */}
+ <PresenceIndicator
+ isOnline={onlineMap[conv.otherUser.id] ?? conv.isOnline ?? false}
+ size="h-3 w-3"
+ className="absolute bottom-0 right-0"
+ />
  </div>
  <div className="flex-1 overflow-hidden">
  <p className="truncate text-sm font-medium text-gray-900">
@@ -151,9 +171,19 @@ export default function ChatPage() {
  ) : (
  <>
  <div className="border-b border-gray-200 bg-white p-3">
+ <div className="flex items-center gap-2">
  <p className="text-sm font-medium text-gray-900">
  {activeUser.displayName || activeUser.username}
  </p>
+ {/* Chấm online cạnh tên (Phase 9H) */}
+ <PresenceIndicator
+ isOnline={onlineMap[activeUser.id] ?? false}
+ size="h-2 w-2"
+ />
+ <span className="text-xs text-gray-500">
+ {onlineMap[activeUser.id] ? "đang online" : "offline"}
+ </span>
+ </div>
  </div>
 
  <div className="flex-1 space-y-2 overflow-y-auto p-4">

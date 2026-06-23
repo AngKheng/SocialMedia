@@ -25,130 +25,129 @@ import java.util.Map;
 @Slf4j
 public class MessageService {
 
-    private final MessageRepository     messageRepository;
-    private final UserRepository        userRepository;
-    private final SimpMessagingTemplate messagingTemplate;
+ private final MessageRepository messageRepository;
+ private final UserRepository userRepository;
+ private final SimpMessagingTemplate messagingTemplate;
+ private final PresenceService presenceService; // ← Phase 9H
 
-    private static final String CHAT_DESTINATION = "/queue/messages";
+ private static final String CHAT_DESTINATION = "/queue/messages";
 
-    // =============================================
-    // POST /api/messages  (dùng chung cho REST lẫn WebSocket)
-    // =============================================
+ // =============================================
+ // POST /api/messages (dùng chung cho REST lẫn WebSocket)
+ // =============================================
 
-    @Transactional
-    public MessageResponse sendMessage(SendMessageRequest request, UserDetails currentUser) {
-        User sender   = getUser(currentUser.getUsername());
-        User receiver = getUserById(request.receiverId());
+ @Transactional
+ public MessageResponse sendMessage(SendMessageRequest request, UserDetails currentUser) {
+ User sender = getUser(currentUser.getUsername());
+ User receiver = getUserById(request.receiverId());
 
-        if (sender.getId().equals(receiver.getId())) {
-            throw new IllegalArgumentException("Không thể gửi tin nhắn cho chính mình");
-        }
+ if (sender.getId().equals(receiver.getId())) {
+ throw new IllegalArgumentException("Không thể gửi tin nhắn cho chính mình");
+ }
 
-        Message message = Message.builder()
-                .sender(sender)
-                .receiver(receiver)
-                .content(request.content())
-                .isRead(false)
-                .build();
+ Message message = Message.builder()
+ .sender(sender)
+ .receiver(receiver)
+ .content(request.content())
+ .isRead(false)
+ .build();
 
-        Message saved = messageRepository.save(message);
-        log.info("@{} gửi tin nhắn tới @{}", sender.getUsername(), receiver.getUsername());
+ Message saved = messageRepository.save(message);
+ log.info("@{} gửi tin nhắn tới @{}", sender.getUsername(), receiver.getUsername());
 
-        MessageResponse response = MessageResponse.from(saved);
-        pushRealtime(receiver, response);
-        return response;
-    }
+ MessageResponse response = MessageResponse.from(saved);
+ pushRealtime(receiver, response);
+ return response;
+ }
 
-    // =============================================
-    // GET /api/messages/{userId}
-    // =============================================
+ // =============================================
+ // GET /api/messages/{userId}
+ // =============================================
 
-    @Transactional
-    public List<MessageResponse> getConversation(Long otherUserId, UserDetails currentUser) {
-        User me = getUser(currentUser.getUsername());
-        getUserById(otherUserId);
+ @Transactional
+ public List<MessageResponse> getConversation(Long otherUserId, UserDetails currentUser) {
+ User me = getUser(currentUser.getUsername());
+ getUserById(otherUserId);
 
-        List<Message> messages = messageRepository.findConversation(me.getId(), otherUserId);
-        messageRepository.markConversationAsRead(me.getId(), otherUserId);
+ List<Message> messages = messageRepository.findConversation(me.getId(), otherUserId);
+ messageRepository.markConversationAsRead(me.getId(), otherUserId);
 
-        return messages.stream()
-                .map(MessageResponse::from)
-                .toList();
-    }
+ return messages.stream()
+ .map(MessageResponse::from)
+ .toList();
+ }
 
-    // =============================================
-    // GET /api/messages  (danh sách hội thoại)
-    // =============================================
+ // =============================================
+ // GET /api/messages (danh sách hội thoại)
+ // =============================================
 
-    @Transactional(readOnly = true)
-    public List<ConversationResponse> getConversations(UserDetails currentUser) {
-        User me = getUser(currentUser.getUsername());
+ @Transactional(readOnly = true)
+ public List<ConversationResponse> getConversations(UserDetails currentUser) {
+ User me = getUser(currentUser.getUsername());
 
-        List<Message> allMessages = messageRepository
-                .findAllByUserIdOrderByCreatedAtDesc(me.getId());
+ List<Message> allMessages = messageRepository
+ .findAllByUserIdOrderByCreatedAtDesc(me.getId());
 
-        // Group theo "người đối thoại" — giữ tin mới nhất của mỗi người
-        // LinkedHashMap giữ thứ tự insert = thứ tự mới nhất trước (vì query đã ORDER BY DESC)
-        Map<Long, ConversationResponse> grouped = new LinkedHashMap<>();
+ // Group theo "người đối thoại" — giữ tin mới nhất của mỗi người
+ // LinkedHashMap giữ thứ tự insert = thứ tự mới nhất trước (vì query đã ORDER BY DESC)
+ Map<Long, ConversationResponse> grouped = new LinkedHashMap<>();
 
-        for (Message m : allMessages) {
-            User other = m.getSender().getId().equals(me.getId())
-                    ? m.getReceiver()
-                    : m.getSender();
+ for (Message m : allMessages) {
+ User other = m.getSender().getId().equals(me.getId())
+ ? m.getReceiver()
+ : m.getSender();
 
-            // Chỉ giữ tin đầu tiên gặp (= mới nhất, vì list đã sort DESC)
-            if (!grouped.containsKey(other.getId())) {
-                long unread = messageRepository
-                        .countByReceiverIdAndIsRead(me.getId(), false);
-                // unread ở trên là tổng toàn bộ, cần đếm riêng theo otherUser:
-                // dùng cách đơn giản — đếm trong list đã có sẵn
-                long unreadFromOther = allMessages.stream()
-                        .filter(msg -> msg.getSender().getId().equals(other.getId())
-                                    && msg.getReceiver().getId().equals(me.getId())
-                                    && !msg.getIsRead())
-                        .count();
+ // Chỉ giữ tin đầu tiên gặp (= mới nhất, vì list đã sort DESC)
+ if (!grouped.containsKey(other.getId())) {
+ // Đếm unread riêng theo otherUser
+ long unreadFromOther = allMessages.stream()
+ .filter(msg -> msg.getSender().getId().equals(other.getId())
+ && msg.getReceiver().getId().equals(me.getId())
+ && !msg.getIsRead())
+ .count();
 
-                grouped.put(other.getId(), new ConversationResponse(
-                        UserResponse.from(other),
-                        m.getContent(),
-                        m.getCreatedAt(),
-                        unreadFromOther
-                ));
-            }
-        }
+ grouped.put(other.getId(), new ConversationResponse(
+ UserResponse.from(other),
+ m.getContent(),
+ m.getCreatedAt(),
+ unreadFromOther,
+ presenceService.isOnline(other.getId()) // ← Phase 9H
+ ));
+ }
+ }
 
-        return List.copyOf(grouped.values());
-    }
+ return List.copyOf(grouped.values());
+ }
 
-    // =============================================
-    // Push real-time
-    // =============================================
+ // =============================================
+ // Push real-time
+ // =============================================
 
-    private void pushRealtime(User receiver, MessageResponse message) {
-        try {
-            messagingTemplate.convertAndSendToUser(
-                    receiver.getUsername(),
-                    CHAT_DESTINATION,
-                    message
-            );
-            log.debug("Đã push WS message tới @{}", receiver.getUsername());
-        } catch (Exception e) {
-            log.warn("Push WS message thất bại: {}", e.getMessage());
-        }
-    }
+ private void pushRealtime(User receiver, MessageResponse message) {
+ try {
+ messagingTemplate.convertAndSendToUser(
+ receiver.getUsername(),
+ CHAT_DESTINATION,
+ message
+ );
+ log.debug("Đã push WS message tới @{}", receiver.getUsername());
+ } catch (Exception e) {
+ log.warn("Push WS message thất bại: {}", e.getMessage());
+ }
+ }
 
-    // =============================================
-    // Helper
-    // =============================================
+ // =============================================
+ // Helper
+ // =============================================
 
-    private User getUser(String username) {
-        return userRepository.findByUsername(username)
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "User không tồn tại: " + username));
-    }
+ private User getUser(String username) {
+ return userRepository.findByUsername(username)
+ .orElseThrow(() -> new ResourceNotFoundException(
+ "User không tồn tại: " + username));
+ }
 
-    private User getUserById(Long id) {
-        return userRepository.findById(id)
-                .orElseThrow(() -> new ResourceNotFoundException("User", id));
-    }
+ private User getUserById(Long id) {
+ return userRepository.findById(id)
+ .orElseThrow(() -> new ResourceNotFoundException("User", id));
+ }
 }

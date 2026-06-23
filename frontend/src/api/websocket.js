@@ -14,93 +14,114 @@ let isConnecting = false;
 
 const chatListeners = new Set();
 const notificationListeners = new Set();
+const presenceListeners = new Set(); // ← Phase 9H: ai muốn nhận presence update
 
 function notifyChatListeners(payload) {
-  chatListeners.forEach((cb) => cb(payload));
+ chatListeners.forEach((cb) => cb(payload));
 }
 
 function notifyNotificationListeners(payload) {
-  notificationListeners.forEach((cb) => cb(payload));
+ notificationListeners.forEach((cb) => cb(payload));
+}
+
+function notifyPresenceListeners(payload) {
+ presenceListeners.forEach((cb) => cb(payload));
 }
 
 /**
  * Đăng ký lắng nghe. Tự tạo kết nối WebSocket nếu chưa có.
  * Có thể gọi nhiều lần từ nhiều component khác nhau — an toàn.
  *
- * Trả về hàm cleanup để gỡ đăng ký khi component unmount
- * (tránh setState trên component đã unmount).
+ * Props:
+ * - onConnect (fn) — gọi khi kết nối thành công
+ * - onChatMessage (fn) — nhận tin nhắn chat real-time
+ * - onNotification (fn) — nhận notification real-time
+ * - onPresence (fn) — nhận presence update (Phase 9H)
+ *
+ * Trả về hàm cleanup để gỡ đăng ký khi component unmount.
  */
-export function connectWebSocket({ onConnect, onChatMessage, onNotification } = {}) {
-  if (onChatMessage) chatListeners.add(onChatMessage);
-  if (onNotification) notificationListeners.add(onNotification);
+export function connectWebSocket({
+ onConnect,
+ onChatMessage,
+ onNotification,
+ onPresence,
+} = {}) {
+ if (onChatMessage) chatListeners.add(onChatMessage);
+ if (onNotification) notificationListeners.add(onNotification);
+ if (onPresence) presenceListeners.add(onPresence); // ← Phase 9H
 
-  if (!client && !isConnecting) {
-    isConnecting = true;
-    const token = localStorage.getItem("accessToken");
+ if (!client && !isConnecting) {
+ isConnecting = true;
+ const token = localStorage.getItem("accessToken");
 
-    if (!token) {
-      isConnecting = false;
-      return () => {};
-    }
+ if (!token) {
+ isConnecting = false;
+ return () => {};
+ }
 
-    client = new Client({
-      webSocketFactory: () => new SockJS("http://localhost:8080/ws"),
-      connectHeaders: {
-        Authorization: `Bearer ${token}`,
-      },
-      reconnectDelay: 5000,
-      onConnect: () => {
-        client.subscribe("/user/queue/messages", (msg) => {
-          notifyChatListeners(JSON.parse(msg.body));
-        });
+ client = new Client({
+ webSocketFactory: () => new SockJS("http://localhost:8080/ws"),
+ connectHeaders: {
+ Authorization: `Bearer ${token}`,
+ },
+ reconnectDelay: 5000,
+ onConnect: () => {
+ client.subscribe("/user/queue/messages", (msg) => {
+ notifyChatListeners(JSON.parse(msg.body));
+ });
 
-        client.subscribe("/user/queue/notifications", (msg) => {
-          notifyNotificationListeners(JSON.parse(msg.body));
-        });
+ client.subscribe("/user/queue/notifications", (msg) => {
+ notifyNotificationListeners(JSON.parse(msg.body));
+ });
 
-        if (onConnect) onConnect();
-      },
-      onStompError: (frame) => {
-        console.error("STOMP error:", frame.headers["message"]);
-      },
-    });
+ // ← Phase 9H: subscribe presence update
+ client.subscribe("/user/queue/presence", (msg) => {
+ notifyPresenceListeners(JSON.parse(msg.body));
+ });
 
-    client.activate();
-    isConnecting = false;
-  } else if (onConnect && client?.connected) {
-    // Client đã kết nối từ trước (do component khác gọi trước) → gọi callback ngay
-    onConnect();
-  }
+ if (onConnect) onConnect();
+ },
+ onStompError: (frame) => {
+ console.error("STOMP error:", frame.headers["message"]);
+ },
+ });
 
-  return () => {
-    if (onChatMessage) chatListeners.delete(onChatMessage);
-    if (onNotification) notificationListeners.delete(onNotification);
-  };
+ client.activate();
+ isConnecting = false;
+ } else if (onConnect && client?.connected) {
+ onConnect();
+ }
+
+ return () => {
+ if (onChatMessage) chatListeners.delete(onChatMessage);
+ if (onNotification) notificationListeners.delete(onNotification);
+ if (onPresence) presenceListeners.delete(onPresence); // ← Phase 9H
+ };
 }
 
 /**
  * Chỉ gọi khi người dùng thực sự rời hẳn ứng dụng (ví dụ logout).
- * Không gọi ở cleanup của useEffect trong từng trang riêng lẻ,
- * vì các trang khác có thể vẫn cần dùng chung kết nối này.
+ * Không gọi ở cleanup của useEffect trong từng trang riêng lẻ.
  */
 export function disconnectWebSocket() {
-  if (client) {
-    client.deactivate();
-    client = null;
-  }
-  chatListeners.clear();
-  notificationListeners.clear();
+ if (client) {
+ client.deactivate();
+ client = null;
+ }
+ chatListeners.clear();
+ notificationListeners.clear();
+ presenceListeners.clear(); // ← Phase 9H
 }
 
 export function sendChatMessage(receiverId, content) {
-  if (!client || !client.connected) {
-    console.warn("WebSocket chưa kết nối, không gửi được");
-    return false;
-  }
+ if (!client || !client.connected) {
+ console.warn("WebSocket chưa kết nối, không gửi được");
+ return false;
+ }
 
-  client.publish({
-    destination: "/app/chat.send",
-    body: JSON.stringify({ receiverId, content }),
-  });
-  return true;
+ client.publish({
+ destination: "/app/chat.send",
+ body: JSON.stringify({ receiverId, content }),
+ });
+ return true;
 }

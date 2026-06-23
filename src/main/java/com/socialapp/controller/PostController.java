@@ -13,6 +13,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/posts")
 @RequiredArgsConstructor
@@ -72,6 +74,18 @@ public class PostController {
  @AuthenticationPrincipal UserDetails currentUser) {
 
  return ResponseEntity.ok(postService.getFeed(page, size, currentUser));
+ }
+
+ /**
+ * GET /api/posts/discover?limit=20
+ * Discover feed (Phase 9I): random posts từ user không follow + không phải chính mình.
+ */
+ @GetMapping("/discover")
+ public ResponseEntity<List<PostResponse>> getDiscover(
+ @RequestParam(defaultValue = "20") int limit,
+ @AuthenticationPrincipal UserDetails currentUser) {
+
+ return ResponseEntity.ok(postService.getDiscover(limit, currentUser));
  }
 
  /**
