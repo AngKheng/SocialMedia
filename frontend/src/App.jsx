@@ -10,6 +10,7 @@ import ChatPage from "./pages/ChatPage";
 import NotificationPage from "./pages/NotificationPage";
 import ChangePasswordPage from "./pages/ChangePasswordPage";
 import ProfilePage from "./pages/ProfilePage";
+import FollowListPage from "./pages/FollowListPage";
 
 export default function App() {
  return (
@@ -74,6 +75,22 @@ export default function App() {
  element={
  <ProtectedRoute>
  <ProfilePage />
+ </ProtectedRoute>
+ }
+ />
+ <Route
+ path="/users/:id/followers"
+ element={
+ <ProtectedRoute>
+ <FollowListPage />
+ </ProtectedRoute>
+ }
+ />
+ <Route
+ path="/users/:id/following"
+ element={
+ <ProtectedRoute>
+ <FollowListPage />
  </ProtectedRoute>
  }
  />

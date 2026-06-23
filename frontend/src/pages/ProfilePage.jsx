@@ -149,12 +149,18 @@ export default function ProfilePage() {
  )}
 
  <div className="mt-3 flex gap-4 text-sm text-gray-600">
- <span>
+ <Link
+ to={`/users/${profile.id}/followers`}
+ className="hover:underline"
+ >
  <strong className="text-gray-900">{profile.followerCount}</strong> người theo dõi
- </span>
- <span>
+ </Link>
+ <Link
+ to={`/users/${profile.id}/following`}
+ className="hover:underline"
+ >
  <strong className="text-gray-900">{profile.followingCount}</strong> đang theo dõi
- </span>
+ </Link>
  </div>
  </div>
 
