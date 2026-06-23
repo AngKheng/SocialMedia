@@ -8,6 +8,8 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
+
 @Repository
 public interface PostRepository extends JpaRepository<Post, Long> {
 
@@ -24,4 +26,16 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
     /** Lấy tất cả bài của một user, mới nhất trước */
     Page<Post> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
+
+    /**
+     * Tìm bài viết theo nội dung (không phân biệt hoa thường).
+     * Không lấy bài repost. Giới hạn 20 kết quả.
+     */
+    @Query("""
+            SELECT p FROM Post p
+            WHERE p.isRepost = false
+              AND LOWER(p.content) LIKE LOWER(CONCAT('%', :q, '%'))
+            ORDER BY p.createdAt DESC
+            """)
+    List<Post> searchByContent(@Param("q") String q, Pageable pageable);
 }
