@@ -65,6 +65,89 @@ public class PostService {
  }
 
  // =============================================
+ // POST /api/posts/{id}/repost (Phase 9K)
+ // =============================================
+
+ /**
+ * Repost: tạo 1 Post mới với isRepost=true, originalPost=post gốc, content=content gốc.
+ * Tăng repostCount của post gốc.
+ *
+ * Quy tắc:
+ * - Không thể repost chính mình
+ * - Không thể repost 2 lần cùng 1 bài
+ * - Không thể repost 1 bài đã là repost (chỉ repost bài gốc)
+ */
+ @Transactional
+ public PostResponse repost(Long originalPostId, UserDetails currentUser) {
+ User me = getUser(currentUser.getUsername());
+
+ Post originalPost = postRepository.findById(originalPostId)
+ .orElseThrow(() -> new ResourceNotFoundException("Post", originalPostId));
+
+ if (originalPost.getUser().getId().equals(me.getId())) {
+ throw new IllegalArgumentException("Không thể repost bài của chính mình");
+ }
+
+ if (Boolean.TRUE.equals(originalPost.getIsRepost())) {
+ throw new IllegalArgumentException("Không thể repost một bài đã là repost");
+ }
+
+ // Check đã repost chưa
+ if (postRepository.findByUserIdAndOriginalPostIdAndIsRepostTrue(
+ me.getId(), originalPostId).isPresent()) {
+ throw new IllegalArgumentException("Bạn đã repost bài này rồi");
+ }
+
+ Post repost = Post.builder()
+ .user(me)
+ .content(originalPost.getContent()) // copy content gốc
+ .imageUrls(originalPost.getImageUrls())
+ .isRepost(true)
+ .originalPost(originalPost)
+ .build();
+
+ Post saved = postRepository.save(repost);
+
+ // Tăng repostCount của post gốc
+ originalPost.setRepostCount(originalPost.getRepostCount() + 1);
+ postRepository.save(originalPost);
+
+ log.info("@{} đã repost bài id={}", me.getUsername(), originalPostId);
+
+ return PostResponse.from(saved, false, false);
+ }
+
+ // =============================================
+ // DELETE /api/posts/{id}/repost (Phase 9K)
+ // =============================================
+
+ /**
+ * Undo repost: tìm Post là repost của user với originalPostId, xóa nó.
+ * Giảm repostCount của post gốc.
+ *
+ * Body không cần — id trên URL là id của bài GỐC.
+ */
+ @Transactional
+ public void unrepost(Long originalPostId, UserDetails currentUser) {
+ User me = getUser(currentUser.getUsername());
+
+ Post repost = postRepository
+ .findByUserIdAndOriginalPostIdAndIsRepostTrue(me.getId(), originalPostId)
+ .orElseThrow(() -> new IllegalArgumentException(
+ "Bạn chưa repost bài này"));
+
+ postRepository.delete(repost);
+
+ // Giảm repostCount của post gốc
+ postRepository.findById(originalPostId).ifPresent(originalPost -> {
+ originalPost.setRepostCount(Math.max(0, originalPost.getRepostCount() - 1));
+ postRepository.save(originalPost);
+ });
+
+ log.info("@{} đã undo repost bài id={}", me.getUsername(), originalPostId);
+ }
+
+ // =============================================
  // PUT /api/posts/{id}
  // =============================================
 

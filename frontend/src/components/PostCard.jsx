@@ -15,6 +15,10 @@ import ConfirmDialog from "./ConfirmDialog";
  *
  * Avatar + tên → click mở /profile/:id (Phase 9E).
  * Nếu là chủ bài (me.id === post.user.id) → hiện nút ⋯ với menu Sửa/Xóa (Phase 9G).
+ *
+ * Phase 9K — Repost:
+ * - Nút ↻ {count} cho phép toggle repost (chỉ khi KHÔNG phải repost + không phải của mình)
+ * - Nếu bài này là repost (post.isRepost=true) → hiển thị badge "🔁 Repost" (không cho click)
  */
 export default function PostCard({ post, onDelete }) {
  const navigate = useNavigate();
@@ -24,6 +28,13 @@ export default function PostCard({ post, onDelete }) {
  const [isLiked, setIsLiked] = useState(post.isLiked || false);
  const [likeCount, setLikeCount] = useState(post.likeCount);
  const [loading, setLoading] = useState(false);
+
+ // Phase 9K: repost state
+ const [repostCount, setRepostCount] = useState(post.repostCount || 0);
+ const [isReposted, setIsReposted] = useState(post.isReposted || false);
+ const [reposting, setReposting] = useState(false);
+ // Track local để biết bài này đã được user hiện tại repost chưa
+ // (Phase đầu chưa có isReposted từ backend → mặc định false)
 
  // ====== Menu ⋯ state ======
  const [menuOpen, setMenuOpen] = useState(false);
@@ -83,6 +94,30 @@ export default function PostCard({ post, onDelete }) {
  console.error("Like/unlike thất bại:", err);
  } finally {
  setLoading(false);
+ }
+ }
+
+ // Phase 9K: toggle repost
+ async function toggleRepost(e) {
+ e.preventDefault();
+ if (reposting) return;
+ setReposting(true);
+
+ try {
+ if (isReposted) {
+ await api.delete(`/posts/${post.id}/repost`);
+ setIsReposted(false);
+ setRepostCount((c) => Math.max(0, c - 1));
+ } else {
+ await api.post(`/posts/${post.id}/repost`);
+ setIsReposted(true);
+ setRepostCount((c) => c + 1);
+ }
+ } catch (err) {
+ console.error("Repost thất bại:", err);
+ alert(err.response?.data?.message || "Repost thất bại");
+ } finally {
+ setReposting(false);
  }
  }
 
@@ -185,8 +220,27 @@ export default function PostCard({ post, onDelete }) {
  .slice(0, 2)
  .toUpperCase();
 
+ // Phase 9K: cho phép repost nếu KHÔNG phải bài repost + KHÔNG phải của mình
+ const canRepost = !post.isRepost && !isOwner;
+
  return (
  <div className="rounded-xl border border-gray-200 bg-white p-4">
+ {/* Phase 9K: Badge nếu là repost */}
+ {post.isRepost && (
+ <div className="mb-2 text-xs text-gray-500">
+ 🔁 Đã repost
+ {post.originalPostId && (
+ <Link
+ to={`/posts/${post.originalPostId}`}
+ onClick={(e) => e.stopPropagation()}
+ className="ml-1 text-blue-600 hover:underline"
+ >
+ → xem bài gốc
+ </Link>
+ )}
+ </div>
+ )}
+
  {/* Header: avatar + tên (link profile) + Follow hoặc nút ⋯ */}
  <div className="mb-2 flex items-center justify-between">
  <Link to={`/profile/${post.user.id}`} className="flex items-center gap-2">
@@ -266,7 +320,7 @@ export default function PostCard({ post, onDelete }) {
  )}
  </Link>
 
- {/* Actions: like + comment count */}
+ {/* Actions: like + comment + repost (Phase 9K) */}
  <div className="mt-3 flex items-center gap-4 border-t border-gray-100 pt-2 text-sm text-gray-500">
  <button
  onClick={toggleLike}
@@ -284,6 +338,25 @@ export default function PostCard({ post, onDelete }) {
  >
  💬 {post.commentCount} bình luận
  </Link>
+
+ {/* Phase 9K: Nút Repost */}
+ {canRepost && (
+ <button
+ onClick={toggleRepost}
+ disabled={reposting}
+ className={`flex items-center gap-1 ${
+ isReposted ? "text-green-600" : "hover:text-green-600"
+ } disabled:opacity-50`}
+ >
+ ↻ {repostCount}
+ </button>
+ )}
+
+ {!canRepost && !isOwner && post.isRepost && (
+ <span className="flex items-center gap-1 text-gray-400">
+ ↻ {repostCount}
+ </span>
+ )}
  </div>
 
  {/* ====== Edit Modal ====== */}

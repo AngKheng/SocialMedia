@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface PostRepository extends JpaRepository<Post, Long> {
@@ -26,11 +27,6 @@ public interface PostRepository extends JpaRepository<Post, Long> {
 
  /**
  * Discover (Phase 9I): bài random từ user KHÔNG follow + không phải chính mình.
- *
- * Dùng native query với SQL Server function NEWID() để ORDER BY ngẫu nhiên.
- * JPQL không hỗ trợ random sort portable. SQL Server chỉ.
- *
- * TOP (:limit) thay vì Pageable vì chỉ cần lấy 1 trang random (không phân trang).
  */
  @Query(value = """
  SELECT TOP (:limit) * FROM posts p
@@ -57,4 +53,10 @@ public interface PostRepository extends JpaRepository<Post, Long> {
  ORDER BY p.createdAt DESC
  """)
  List<Post> searchByContent(@Param("q") String q, Pageable pageable);
+
+ /**
+ * Phase 9K: Tìm repost của user với bài gốc (để check đã repost chưa).
+ */
+ Optional<Post> findByUserIdAndOriginalPostIdAndIsRepostTrue(
+ Long userId, Long originalPostId);
 }

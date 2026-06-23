@@ -64,6 +64,32 @@ public class PostController {
  }
 
  /**
+ * POST /api/posts/{id}/repost (Phase 9K)
+ * Repost bài viết của người khác. Trả về Post mới (isRepost=true, originalPost=post gốc).
+ */
+ @PostMapping("/{id}/repost")
+ public ResponseEntity<PostResponse> repost(
+ @PathVariable Long id,
+ @AuthenticationPrincipal UserDetails currentUser) {
+
+ return ResponseEntity.status(HttpStatus.CREATED)
+ .body(postService.repost(id, currentUser));
+ }
+
+ /**
+ * DELETE /api/posts/{id}/repost (Phase 9K)
+ * Undo repost: xóa Post repost mà user đã tạo với bài gốc id.
+ */
+ @DeleteMapping("/{id}/repost")
+ public ResponseEntity<Void> unrepost(
+ @PathVariable Long id,
+ @AuthenticationPrincipal UserDetails currentUser) {
+
+ postService.unrepost(id, currentUser);
+ return ResponseEntity.noContent().build();
+ }
+
+ /**
  * GET /api/posts/feed?page=0&size=10
  * Feed của người đang đăng nhập, kèm isLiked theo currentUser.
  */
