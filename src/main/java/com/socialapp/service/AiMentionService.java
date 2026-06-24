@@ -22,87 +22,109 @@ import java.time.LocalDateTime;
 @Slf4j
 public class AiMentionService {
 
-    private final AiMentionRepository aiMentionRepository;
-    private final CommentRepository   commentRepository;
-    private final PostRepository      postRepository;
-    private final UserRepository      userRepository;
-    private final GroqService         groqService;
+ private final AiMentionRepository aiMentionRepository;
+ private final CommentRepository commentRepository;
+ private final PostRepository postRepository;
+ private final UserRepository userRepository;
+ private final GroqService groqService;
 
-    @Value("${groq.bot.username}")
-    private String botUsername;
+ @Value("${groq.bot.username}")
+ private String botUsername;
 
-    /**
-     * Gọi sau khi tạo comment thành công.
-     * Chạy async để không block response trả về cho user.
-     *
-     * Nếu comment không chứa @groq → bỏ qua ngay.
-     */
-    @Async
-    @Transactional
-    public void handleIfMentioned(Comment comment) {
-        String content = comment.getContent();
+ /**
+ * Public async entry point — chỉ chạy trên thread riêng.
+ *
+ * Lý do KHÔNG đặt @Transactional ở đây:
+ * Spring AOP chỉ apply được 1 advice duy nhất trên 1 method
+ * (Async HOẶC Transactional). Khi đặt cả 2 cùng lúc, transaction
+ * không hoạt động đúng trên thread mới → lazy load fail,
+ * exception bị nuốt hoàn toàn. Bug "Groq chỉ chạy 1 lần"
+ * gốc là ở chỗ này.
+ *
+ * Toàn bộ exception được nuốt + log stack trace đầy đủ
+ * để debug nếu có lỗi lần sau.
+ */
+ @Async
+ public void handleIfMentioned(Comment comment) {
+ try {
+ handleIfMentionedInternal(comment);
+ } catch (Exception e) {
+ // Truyền Throwable ở cuối → SLF4J tự in stack trace đầy đủ
+ log.error("Async @groq xử lý thất bại cho comment id={}",
+ comment.getId(), e);
+ }
+ }
 
-        // Kiểm tra có @groq không (case-insensitive)
-        if (!content.toLowerCase().contains("@groq")) {
-            return;
-        }
+ /**
+ * Logic chính — chạy trong transaction riêng (qua proxy).
+ * Throw exception ra ngoài để caller (@Async) log.
+ */
+ @Transactional
+ public void handleIfMentionedInternal(Comment comment) {
+ String content = comment.getContent();
 
-        log.info("Phát hiện @groq trong comment id={}", comment.getId());
+ // Kiểm tra có @groq không (case-insensitive)
+ if (!content.toLowerCase().contains("@groq")) {
+ return;
+ }
 
-        // Strip @groq ra khỏi câu hỏi
-        String question = content.replaceAll("(?i)@groq", "").trim();
-        if (question.isBlank()) {
-            question = "Xin chào!";
-        }
+ log.info("Phát hiện @groq trong comment id={}", comment.getId());
 
-        Post post = comment.getPost();
-        User user = comment.getUser();
+ // Strip @groq ra khỏi câu hỏi
+ String question = content.replaceAll("(?i)@groq", "").trim();
+ if (question.isBlank()) {
+ question = "Xin chào!";
+ }
 
-        // Lưu AiMention (processed = false)
-        AiMention mention = AiMention.builder()
-                .post(post)
-                .comment(comment)
-                .user(user)
-                .mentionedText(question)
-                .processed(false)
-                .build();
-        mention = aiMentionRepository.save(mention);
+ Post post = comment.getPost();
+ User user = comment.getUser();
 
-        try {
-            // Gọi Groq API
-            String aiReply = groqService.ask(post.getId(), user.getId(), question);
+ // Lưu AiMention (processed = false) — commit ngay ở đây
+ AiMention mention = AiMention.builder()
+ .post(post)
+ .comment(comment)
+ .user(user)
+ .mentionedText(question)
+ .processed(false)
+ .build();
+ mention = aiMentionRepository.save(mention);
 
-            // Lấy bot user
-            User groqBot = userRepository.findByUsernameAndIsBot(botUsername, true)
-                    .orElseThrow(() -> new RuntimeException("Không tìm thấy Groq bot"));
+ try {
+ // Gọi Groq API
+ String aiReply = groqService.ask(post.getId(), user.getId(), question);
 
-            // Lưu reply của AI thành comment mới
-            Comment aiComment = Comment.builder()
-                    .post(post)
-                    .user(groqBot)
-                    .content(aiReply)
-                    .parentComment(comment)   // reply vào comment của user
-                    .isAiGenerated(true)
-                    .build();
-            aiComment = commentRepository.save(aiComment);
+ // Lấy bot user
+ User groqBot = userRepository.findByUsernameAndIsBot(botUsername, true)
+ .orElseThrow(() -> new RuntimeException("Không tìm thấy Groq bot"));
 
-            // Cập nhật commentCount trên post
-            post.setCommentCount(post.getCommentCount() + 1);
-            postRepository.save(post);
+ // Lưu reply của AI thành comment mới
+ Comment aiComment = Comment.builder()
+ .post(post)
+ .user(groqBot)
+ .content(aiReply)
+ .parentComment(comment)  // reply vào comment của user
+ .isAiGenerated(true)
+ .build();
+ aiComment = commentRepository.save(aiComment);
 
-            // Đánh dấu đã xử lý xong
-            mention.setAiResponseComment(aiComment);
-            mention.setProcessed(true);
-            mention.setProcessedAt(LocalDateTime.now());
-            aiMentionRepository.save(mention);
+ // Cập nhật commentCount trên post
+ post.setCommentCount(post.getCommentCount() + 1);
+ postRepository.save(post);
 
-            log.info("Groq đã reply comment id={} trong post id={}",
-                    comment.getId(), post.getId());
+ // Đánh dấu đã xử lý xong
+ mention.setAiResponseComment(aiComment);
+ mention.setProcessed(true);
+ mention.setProcessedAt(LocalDateTime.now());
+ aiMentionRepository.save(mention);
 
-        } catch (Exception e) {
-            log.error("Groq xử lý thất bại cho comment id={}: {}",
-                    comment.getId(), e.getMessage());
-            // Không throw — mention giữ processed=false để có thể retry sau
-        }
-    }
+ log.info("Groq đã reply comment id={} trong post id={}",
+ comment.getId(), post.getId());
+
+ } catch (Exception e) {
+ // Truyền Throwable ở cuối → in stack trace đầy đủ
+ log.error("Groq xử lý thất bại cho comment id={}",
+ comment.getId(), e);
+ // Không throw — mention giữ processed=false để có thể retry sau
+ }
+ }
 }

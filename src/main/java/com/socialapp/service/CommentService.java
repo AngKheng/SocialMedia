@@ -66,6 +66,19 @@ public class CommentService {
 
  log.info("@{} commented on post id={}", me.getUsername(), post.getId());
 
+ // ============================================================
+ // Fix B: Eager load các quan hệ LAZY trước khi gọi async.
+ //
+ // AiMentionService.handleIfMentioned() chạy trên thread riêng.
+ // Nếu truy cập saved.getPost() / saved.getUser() trên thread
+ // đó mà session đã đóng → LazyInitializationException.
+ //
+ // Touch các field cần dùng (chỉ cần gọi getter, Hibernate tự
+ // load trong transaction hiện tại).
+ // ============================================================
+ saved.getPost().getId();
+ saved.getUser().getId();
+
  // Thông báo cho chủ bài (async)
  notificationService.notifyComment(me, post, saved);
 
