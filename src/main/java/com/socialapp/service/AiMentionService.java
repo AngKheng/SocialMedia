@@ -59,72 +59,61 @@ public class AiMentionService {
  * Logic chính — chạy trong transaction riêng (qua proxy).
  * Throw exception ra ngoài để caller (@Async) log.
  */
- @Transactional
- public void handleIfMentionedInternal(Comment comment) {
- String content = comment.getContent();
+@Transactional
+public void handleIfMentionedInternal(Comment comment) {
 
- // Kiểm tra có @groq không (case-insensitive)
- if (!content.toLowerCase().contains("@groq")) {
- return;
- }
+    // Reload trong transaction mới → parentComment được load đúng
+    Comment fresh = commentRepository.findById(comment.getId())
+            .orElseThrow(() -> new RuntimeException(
+                    "Comment id=" + comment.getId() + " không tồn tại"));
 
- log.info("Phát hiện @groq trong comment id={}", comment.getId());
+    String content = fresh.getContent();
+    if (!content.toLowerCase().contains("@groq")) return;
 
- // Strip @groq ra khỏi câu hỏi
- String question = content.replaceAll("(?i)@groq", "").trim();
- if (question.isBlank()) {
- question = "Xin chào!";
- }
+    log.info("Phát hiện @groq trong comment id={}", fresh.getId());
 
- Post post = comment.getPost();
- User user = comment.getUser();
+    String question = content.replaceAll("(?i)@groq", "").trim();
+    if (question.isBlank()) question = "Xin chào!";
 
- // Lưu AiMention (processed = false) — commit ngay ở đây
- AiMention mention = AiMention.builder()
- .post(post)
- .comment(comment)
- .user(user)
- .mentionedText(question)
- .processed(false)
- .build();
- mention = aiMentionRepository.save(mention);
+    Post post = fresh.getPost();
+    User user = fresh.getUser();
 
- try {
- // Gọi Groq API
- String aiReply = groqService.ask(post.getId(), user.getId(), question);
+    AiMention mention = AiMention.builder()
+            .post(post).comment(fresh).user(user)
+            .mentionedText(question).processed(false)
+            .build();
+    mention = aiMentionRepository.save(mention);
 
- // Lấy bot user
- User groqBot = userRepository.findByUsernameAndIsBot(botUsername, true)
- .orElseThrow(() -> new RuntimeException("Không tìm thấy Groq bot"));
+    try {
+        String aiReply = groqService.ask(post.getId(), user.getId(), question);
 
- // Lưu reply của AI thành comment mới
- Comment aiComment = Comment.builder()
- .post(post)
- .user(groqBot)
- .content(aiReply)
- .parentComment(comment)  // reply vào comment của user
- .isAiGenerated(true)
- .build();
- aiComment = commentRepository.save(aiComment);
+        User groqBot = userRepository.findByUsernameAndIsBot(botUsername, true)
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy Groq bot"));
 
- // Cập nhật commentCount trên post
- post.setCommentCount(post.getCommentCount() + 1);
- postRepository.save(post);
+        // ✅ KEY FIX: nếu comment là reply (depth=1),
+        // AI reply vào ROOT comment → tránh tạo depth=2 (không load được)
+        Comment aiParent = fresh.getParentComment() != null
+                ? fresh.getParentComment()   // reply → lên root
+                : fresh;                     // root comment → giữ nguyên
 
- // Đánh dấu đã xử lý xong
- mention.setAiResponseComment(aiComment);
- mention.setProcessed(true);
- mention.setProcessedAt(LocalDateTime.now());
- aiMentionRepository.save(mention);
+        Comment aiComment = Comment.builder()
+                .post(post).user(groqBot).content(aiReply)
+                .parentComment(aiParent)     // ← đã fix
+                .isAiGenerated(true).build();
+        aiComment = commentRepository.save(aiComment);
 
- log.info("Groq đã reply comment id={} trong post id={}",
- comment.getId(), post.getId());
+        post.setCommentCount(post.getCommentCount() + 1);
+        postRepository.save(post);
 
- } catch (Exception e) {
- // Truyền Throwable ở cuối → in stack trace đầy đủ
- log.error("Groq xử lý thất bại cho comment id={}",
- comment.getId(), e);
- // Không throw — mention giữ processed=false để có thể retry sau
- }
- }
+        mention.setAiResponseComment(aiComment);
+        mention.setProcessed(true);
+        mention.setProcessedAt(LocalDateTime.now());
+        aiMentionRepository.save(mention);
+
+        log.info("Groq reply comment id={} post id={}", fresh.getId(), post.getId());
+
+    } catch (Exception e) {
+        log.error("Groq thất bại cho comment id={}", fresh.getId(), e);
+    }
+}
 }

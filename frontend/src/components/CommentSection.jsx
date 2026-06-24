@@ -109,6 +109,7 @@ export default function CommentSection({ postId, comments, setComments }) {
  onReplyAdded={handleReplyAdded}
  onCommentDeleted={handleCommentDeleted}
  onCommentUpdated={handleCommentUpdated}
+onReloadRequest={reloadComments}
  />
  ))}
  </div>
