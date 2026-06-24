@@ -3,6 +3,7 @@ import { useParams, Link } from "react-router-dom";
 import api from "../api/axios";
 import Navbar from "../components/Navbar";
 import CommentSection from "../components/CommentSection";
+import UserAvatar from "../components/UserAvatar";
 
 export default function PostDetailPage() {
   const { id } = useParams();
@@ -73,24 +74,21 @@ export default function PostDetailPage() {
     );
   }
 
-  const initials = (post.user.displayName || post.user.username)
-    .slice(0, 2)
-    .toUpperCase();
-
   return (
     <div className="min-h-screen bg-gray-50">
       <Navbar />
 
       <div className="mx-auto max-w-xl px-4 py-6">
-        <Link to="/feed" className="mb-3 inline-block text-sm text-blue-600 hover:underline">
+        <Link
+          to="/feed"
+          className="mb-3 inline-block text-sm text-blue-600 hover:underline"
+        >
           ← Quay lại Feed
         </Link>
 
         <div className="rounded-xl border border-gray-200 bg-white p-4">
           <div className="mb-2 flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-sm font-medium text-blue-700">
-              {initials}
-            </div>
+            <UserAvatar user={post.user} size="lg" />
             <div>
               <p className="text-sm font-medium text-gray-900">
                 {post.user.displayName || post.user.username}

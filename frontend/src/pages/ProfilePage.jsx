@@ -1,282 +1,199 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import api from "../api/axios";
-import { useAuth } from "../context/AuthContext";
 import Navbar from "../components/Navbar";
+import UserAvatar from "../components/UserAvatar";
+import AvatarCropModal from "../components/AvatarCropModal";
 import PostCard from "../components/PostCard";
-import FollowButton from "../components/FollowButton";
+import { useAuth } from "../context/AuthContext";
 
-/**
- * Trang profile:
- * - Nếu id = "me" (hoặc không có) → hiển thị + cho phép sửa profile của chính mình
- * - Nếu id là số → hiển thị profile người khác + FollowButton
- *
- * Số follower/following hiển thị dạng text (chưa link đến list — làm ở 9F).
- */
 export default function ProfilePage() {
- const { id: paramId } = useParams();
- const { user: me, setUser } = useAuth();
- const navigate = useNavigate();
+  const { id } = useParams();          // string từ URL
+  const { user: me, login } = useAuth();
 
- // Xác định userId cần xem
- const targetId = !paramId || paramId === "me" ? me?.id : Number(paramId);
- const isMe = !paramId || paramId === "me";
+  const [profile, setProfile] = useState(null);
+  const [posts, setPosts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [showCropModal, setShowCropModal] = useState(false);
 
- const [profile, setProfile] = useState(null);
- const [posts, setPosts] = useState([]);
- const [loading, setLoading] = useState(true);
- const [error, setError] = useState("");
- const [isEditing, setIsEditing] = useState(false);
- const [editForm, setEditForm] = useState({ displayName: "", bio: "", avatarUrl: "" });
- const [saving, setSaving] = useState(false);
- const [saveError, setSaveError] = useState("");
+  // So sánh dạng string để tránh lỗi kiểu number vs Long
+  const isOwner = me && profile && String(me.id) === String(profile.id);
 
- useEffect(() => {
- if (!targetId) return;
- loadProfile();
- loadPosts();
- // eslint-disable-next-line react-hooks/exhaustive-deps
- }, [targetId]);
+  useEffect(() => {
+    if (!id || id === "undefined") {
+      setError("Không tìm thấy người dùng");
+      setLoading(false);
+      return;
+    }
+    loadProfile();
+    loadPosts();
+  }, [id]);
 
- async function loadProfile() {
- setLoading(true);
- setError("");
- try {
- const res = await api.get(`/users/${targetId}`);
- setProfile(res.data);
- if (isMe) {
- setEditForm({
- displayName: res.data.displayName || "",
- bio: res.data.bio || "",
- avatarUrl: res.data.avatarUrl || "",
- });
- }
- } catch (err) {
- setError("Không tìm thấy user này");
- } finally {
- setLoading(false);
- }
- }
+  async function loadProfile() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await api.get(`/users/${id}`);
+      setProfile(res.data);
+    } catch (err) {
+      if (err.response?.status === 404) {
+        setError("Người dùng không tồn tại");
+      } else {
+        setError("Không tải được thông tin người dùng");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
 
- async function loadPosts() {
- try {
- const res = await api.get(`/posts/user/${targetId}`, { params: { page: 0, size: 20 } });
- setPosts(res.data.content || []);
- } catch (err) {
- console.error("Load posts thất bại:", err);
- }
- }
+  async function loadPosts() {
+    try {
+      const res = await api.get(`/posts/user/${id}`, {
+        params: { page: 0, size: 20 },
+      });
+      setPosts(res.data.content);
+    } catch (err) {
+      console.error("Load posts thất bại:", err);
+    }
+  }
 
- function handlePostDeleted(postId) {
- setPosts((prev) => prev.filter((p) => p.id !== postId));
- }
+  async function toggleFollow() {
+    if (!profile) return;
+    try {
+      const res = profile.isFollowing
+        ? await api.delete(`/follow/${profile.id}`)
+        : await api.post(`/follow/${profile.id}`);
+      setProfile((prev) => ({
+        ...prev,
+        isFollowing: res.data.isFollowing,
+        followerCount: res.data.followerCount,
+      }));
+    } catch (err) {
+      console.error("Follow thất bại:", err);
+    }
+  }
 
- async function handleSaveProfile(e) {
- e.preventDefault();
- setSaving(true);
- setSaveError("");
- try {
- const res = await api.put("/users/me", editForm);
- // Cập nhật localStorage user (giữ các field khác)
- const updatedUser = { ...me, ...res.data };
- localStorage.setItem("user", JSON.stringify(updatedUser));
- setUser(updatedUser);
- setIsEditing(false);
- // Reload để hiển thị data mới từ server (kèm follower/following count)
- await loadProfile();
- } catch (err) {
- setSaveError(err.response?.data?.message || "Cập nhật thất bại");
- } finally {
- setSaving(false);
- }
- }
+  function handleAvatarSaved(avatarUrl) {
+    // Cập nhật state trang
+    setProfile((prev) => ({ ...prev, avatarUrl }));
 
- if (loading) {
- return (
- <div className="min-h-screen bg-gray-50">
- <Navbar />
- <p className="py-10 text-center text-sm text-gray-400">Đang tải...</p>
- </div>
- );
- }
+    // Cập nhật AuthContext để Navbar + mọi nơi dùng user đổi ngay
+    login({
+      accessToken: localStorage.getItem("accessToken"),
+      refreshToken: localStorage.getItem("refreshToken"),
+      user: { ...me, avatarUrl },
+    });
 
- if (error || !profile) {
- return (
- <div className="min-h-screen bg-gray-50">
- <Navbar />
- <p className="py-10 text-center text-sm text-red-500">{error}</p>
- <p className="text-center">
- <Link to="/feed" className="text-sm text-blue-600 hover:underline">
- ← Quay lại Feed
- </Link>
- </p>
- </div>
- );
- }
+    setShowCropModal(false);
+  }
 
- const initials = (profile.displayName || profile.username).slice(0, 2).toUpperCase();
+  // ── Loading / Error ────────────────────────────────────────────────
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <p className="py-16 text-center text-sm text-gray-400">Đang tải...</p>
+      </div>
+    );
+  }
 
- return (
- <div className="min-h-screen bg-gray-50">
- <Navbar />
+  if (error || !profile) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Navbar />
+        <p className="py-16 text-center text-sm text-red-500">
+          {error || "Không tìm thấy người dùng"}
+        </p>
+      </div>
+    );
+  }
 
- <div className="mx-auto max-w-2xl px-4 py-6">
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <Navbar />
 
- {/* Header card */}
- <div className="mb-4 rounded-xl border border-gray-200 bg-white p-6">
- <div className="flex items-start gap-4">
- {/* Avatar */}
- {profile.avatarUrl ? (
- <img
- src={profile.avatarUrl}
- alt=""
- className="h-20 w-20 flex-shrink-0 rounded-full object-cover"
- />
- ) : (
- <div className="flex h-20 w-20 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-2xl font-medium text-blue-700">
- {initials}
- </div>
- )}
+      <div className="mx-auto max-w-xl px-4 py-6">
+        {/* Profile card */}
+        <div className="mb-4 rounded-xl border border-gray-200 bg-white p-5">
+          <div className="flex items-start gap-4">
+            {/* Avatar — click để đổi nếu là chủ tài khoản */}
+            <UserAvatar
+              user={profile}
+              size="xl"
+              editable={isOwner}
+              onClick={isOwner ? () => setShowCropModal(true) : undefined}
+            />
 
- <div className="flex-1">
- <p className="text-xl font-bold text-gray-900">
- {profile.displayName || profile.username}
- </p>
- <p className="text-sm text-gray-500">@{profile.username}</p>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-base font-semibold text-gray-900">
+                    {profile.displayName || profile.username}
+                  </p>
+                  <p className="text-sm text-gray-500">@{profile.username}</p>
+                </div>
 
- {profile.bio && (
- <p className="mt-2 text-sm text-gray-700">{profile.bio}</p>
- )}
+                {!isOwner && (
+                  <button
+                    onClick={toggleFollow}
+                    className={`flex-shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition ${
+                      profile.isFollowing
+                        ? "border border-gray-300 text-gray-600 hover:border-red-300 hover:text-red-500"
+                        : "bg-blue-600 text-white hover:bg-blue-700"
+                    }`}
+                  >
+                    {profile.isFollowing ? "Đang theo dõi" : "Theo dõi"}
+                  </button>
+                )}
+              </div>
 
- <div className="mt-3 flex gap-4 text-sm text-gray-600">
- <Link
- to={`/users/${profile.id}/followers`}
- className="hover:underline"
- >
- <strong className="text-gray-900">{profile.followerCount}</strong> người theo dõi
- </Link>
- <Link
- to={`/users/${profile.id}/following`}
- className="hover:underline"
- >
- <strong className="text-gray-900">{profile.followingCount}</strong> đang theo dõi
- </Link>
- </div>
- </div>
+              {profile.bio && (
+                <p className="mt-2 text-sm text-gray-700">{profile.bio}</p>
+              )}
 
- {/* Nút Follow hoặc Sửa */}
- <div className="flex-shrink-0">
- {isMe ? (
- <button
- onClick={() => setIsEditing(true)}
- className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
- >
- Sửa profile
- </button>
- ) : (
- <FollowButton userId={profile.id} initialState={profile.isFollowing} />
- )}
- </div>
- </div>
- </div>
+              <div className="mt-3 flex gap-4 text-sm">
+                <span>
+                  <strong className="text-gray-900">
+                    {profile.followerCount}
+                  </strong>{" "}
+                  <span className="text-gray-500">người theo dõi</span>
+                </span>
+                <span>
+                  <strong className="text-gray-900">
+                    {profile.followingCount}
+                  </strong>{" "}
+                  <span className="text-gray-500">đang theo dõi</span>
+                </span>
+              </div>
+            </div>
+          </div>
 
- {/* Form sửa profile (chỉ khi isMe và isEditing) */}
- {isMe && isEditing && (
- <form
- onSubmit={handleSaveProfile}
- className="mb-4 rounded-xl border border-gray-200 bg-white p-4"
- >
- <h2 className="mb-3 text-sm font-semibold text-gray-900">Sửa profile</h2>
+          {isOwner && (
+            <p className="mt-3 text-center text-xs text-gray-400">
+              Nhấn vào ảnh đại diện để thay đổi
+            </p>
+          )}
+        </div>
 
- {saveError && (
- <div className="mb-2 rounded-md bg-red-50 px-3 py-2 text-sm text-red-600">
- {saveError}
- </div>
- )}
+        {/* Bài viết */}
+        <div className="space-y-3">
+          {posts.length === 0 ? (
+            <p className="py-8 text-center text-sm text-gray-400">
+              {isOwner ? "Bạn chưa có bài viết nào" : "Chưa có bài viết nào"}
+            </p>
+          ) : (
+            posts.map((post) => <PostCard key={post.id} post={post} />)
+          )}
+        </div>
+      </div>
 
- <div className="mb-3">
- <label className="mb-1 block text-xs font-medium text-gray-700">
- Tên hiển thị
- </label>
- <input
- type="text"
- value={editForm.displayName}
- onChange={(e) => setEditForm({ ...editForm, displayName: e.target.value })}
- maxLength={100}
- className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
- />
- </div>
-
- <div className="mb-3">
- <label className="mb-1 block text-xs font-medium text-gray-700">
- Bio
- </label>
- <textarea
- value={editForm.bio}
- onChange={(e) => setEditForm({ ...editForm, bio: e.target.value })}
- maxLength={255}
- rows={2}
- className="w-full resize-none rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
- />
- </div>
-
- <div className="mb-3">
- <label className="mb-1 block text-xs font-medium text-gray-700">
- Avatar URL
- </label>
- <input
- type="text"
- value={editForm.avatarUrl}
- onChange={(e) => setEditForm({ ...editForm, avatarUrl: e.target.value })}
- maxLength={500}
- placeholder="https://..."
- className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
- />
- </div>
-
- <div className="flex gap-2">
- <button
- type="submit"
- disabled={saving}
- className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
- >
- {saving ? "Đang lưu..." : "Lưu"}
- </button>
- <button
- type="button"
- onClick={() => {
- setIsEditing(false);
- setSaveError("");
- }}
- className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50"
- >
- Hủy
- </button>
- </div>
- </form>
- )}
-
- {/* Danh sách post */}
- <h2 className="mb-3 px-1 text-sm font-semibold text-gray-700">
- Bài viết ({posts.length})
- </h2>
-
- {posts.length === 0 ? (
- <p className="rounded-xl border border-gray-200 bg-white py-8 text-center text-sm text-gray-400">
- {isMe ? "Bạn chưa đăng bài nào." : "User này chưa đăng bài nào."}
- </p>
- ) : (
- <div className="space-y-3">
- {posts.map((post) => (
- <PostCard
- key={post.id}
- post={post}
- onDelete={handlePostDeleted}
- />
- ))}
- </div>
- )}
- </div>
- </div>
- );
+      {showCropModal && (
+        <AvatarCropModal
+          onClose={() => setShowCropModal(false)}
+          onSaved={handleAvatarSaved}
+        />
+      )}
+    </div>
+  );
 }
